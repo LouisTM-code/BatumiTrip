@@ -6,7 +6,7 @@
 | Инструмент / Библиотека | Роль в проекте |
 |-------------------------|----------------|
 | **Next.js 14** - App Router; React 18; Server Components и Client Components | **Frontend** - UI‑рендеринг страниц и компонентов; Маршрутизация (динамические маршруты, nested routing); Адаптивная верстка под мобильные и десктоп устройства |
-| **Tailwind CSS** + **shadcn/ui** | **CSS-фреймворк и UI-компоненты** - Утилитарные классы для быстрого стилирования; Готовые дизайн-компоненты (кнопки, карточки, формы) для согласованного UI|
+| **Tailwind CSS** + **shadcn** | **CSS-фреймворк и UI-компоненты** - Утилитарные классы для быстрого стилирования; Готовые дизайн-компоненты (кнопки, карточки, формы) для согласованного UI|
 | **lucide-react** | **Иконки** - Лёгкий SVG-иконопакет |
 | **Framer Motion** | **Анимации** - Плавные переходы и визуальные эффекты; Анимация мерцания skeleton-loader, появления карточек |
 | **Supabase** - PostgreSQL база данных; Storage (загрузка и хранение изображений); Row-Level Security; Supabase Auth (Magic Link); Edge Functions | **Backend-as-a-Service** - Надёжное хранение данных и управление доступом (RLS); Готовый API для CRUD операций; Аутентификация пользователей; Серверные функции на Edge для дополнительной логики (геокодинг, вебхуки) |
@@ -31,25 +31,33 @@ batumi‑trip/
 │       ├─ new/page.jsx   # форма добавления
 │       └─ [id]/page.jsx  # детальная страница локации
 ├─ middleware.ts          #	auth‑middleware (NextAuth.js + cookie)
-├─ components/            
-│   ├─ LocationCard.jsx
-│   ├─ SkeletonCard.jsx
-│   ├─ TagBadge.jsx
-│   └─ ...
-├─ lib/                   
-│   ├─ supabaseClient.js
-│   ├─ auth.js           # NextAuth options
-│   ├─ cookies.js        # утилиты для работы с куками
-│   └─ fetchers.js
+├─ components/      
+│   ├─ AuthProvider.js    # Обёртка SessionProvider (NextAuth)
+│   ├─ LoginModal.js      # Модальное окно входа без пароля
+│   ├─ Providers.js       # Композиция провайдеров (React Query, Auth, Theme)
+│   ├─ ThemeProvider.js   # Провайдер тем (next-themes)
+│   ├─ ...
+│   └─ ui/                # radix-ui компонентый через shadcn
+│       ├─ button.jsx
+│       ├─ dialog.jsx
+│       ├─ input.jsx
+│       └─ ...
+├─ lib/
+│   ├─ reactQuery.js     # Конфигурация и создание клиента React Query           
+│   ├─ supabaseClient.js # Инициализация и экспорт клиента Supabase
+│   ├─ utils.js          # Утилиты для объединения и оптимизации CSS-классов 
+│   ├─ auth.js           # NextAuth options (не реализован)
+│   ├─ cookies.js        # утилиты для работы с куками (не реализован)
+│   └─ fetchers.js       # (не реализован)
 ├─ hooks/                 
-│   ├─ useAuth.js        # проверка/чтение сессии из cookie
-│   └─ useLocations.js
+│   ├─ useAuth.js        # Хук работы с сессией и методами входа/выхода
+│   └─ useLocations.js   # (не реализован)
 ├─ store/                # Zustand сторы и селекторы
+│   └─ uiStore.js        # Zustand-хранилище UI
 ├─ styles/                
 │   ├─ globals.css
 │   └─ tailwind.config.js
-├─ public/               # статичные ассеты
-├─ tests/                 
+├─ public/               # статичные ассеты           
 ├─ supabase/             # миграции, SQL‑скрипты, RLS‑политики
 ├─ .env.example           
 └─ README.md

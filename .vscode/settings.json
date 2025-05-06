@@ -1,0 +1,7 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "eslint.workingDirectories": [
+    { "directory": "./batumi-trip", "changeProcessCWD": true }
+  ],
+}

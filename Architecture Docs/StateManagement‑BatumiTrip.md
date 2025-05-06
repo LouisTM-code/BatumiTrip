@@ -210,7 +210,7 @@ useUIStore.getState().hydrateFavourites(data.map((f) => f.location_id));
 |-----|--------------------------------|
 | `useAuth()` | Обёртка над NextAuth `useSession`; выдаёт { user, isLoading, signIn, signOut } |
 | `useLocations()` | `useInfiniteQuery` со строкой поиска и тегами из Zustand |
-| `useLocation(id)` | `useQuery(['location', id])` |
+| `useOneLocation(id)` | `useQuery(['location', id])` |
 | `useAddLocation()` | `useMutation` + optimistic insert|
 | `useUpdateLocation()` | `useMutation` + optimistic patch |
 | `useDeleteLocation()` | `useMutation` + optimistic remove |
@@ -250,7 +250,7 @@ useUIStore.getState().hydrateFavourites(data.map((f) => f.location_id));
 ## Примечание о нейминге хуков
 > Все упомянутые документы (Components Design, API, State Management) используют единый набор имён:
 ```text
-useAuth, useLocations, useLocation,
+useAuth, useLocations, useOneLocation,
 useAddLocation, useUpdateLocation, useDeleteLocation,
 useTags, useToggleFavourite
 ```

@@ -147,7 +147,7 @@ SPA «Batumi Trip» — это одностраничное приложение
 * **Цели:** показывать полную информацию локации, реализовать правку и удаление своих локаций.
 * **Задачи:**
 
-  * Страница *LocationDetailPage* (`/locations/{id}`): роут Next.js. Вызывать хук `useLocation(id)` (React Query) для загрузки одной локации вместе с её тегами и списком текущих favorites.
+  * Страница *LocationDetailPage* (`/locations/{id}`): роут Next.js. Вызывать хук `useOneLocation(id)` (React Query) для загрузки одной локации вместе с её тегами и списком текущих favorites.
   * Компонент `LocationDetail`: отображает поля (title, image, address, cost, sourceUrl, description, теги через `TagBadge`). Кнопки `EditButton` и `DeleteButton` рядом.
   * `EditButton`: при клике редиректит на `/locations/{id}/edit`.
   * Страница *EditLocationPage* (`/locations/{id}/edit`): рендерит тот же `LocationForm` с `initialData` из загруженной локации. При сабмите вызывает PATCH к `/rest/v1/locations?id=eq.{id}`.
@@ -211,7 +211,7 @@ SPA «Batumi Trip» — это одностраничное приложение
 * **Цели:** обеспечить стабильность и завершить релиз.
 * **Задачи:**
 
-  * Написать unit-тесты (Jest/React Testing Library) для ключевых компонентов и хуков (`useLocations`, `useLocation`, `useToggleFavourite`, `LocationForm` и др.). Достигнуть охвата кода ≥ 70 %.
+  * Написать unit-тесты (Jest/React Testing Library) для ключевых компонентов и хуков (`useLocations`, `useOneLocation`, `useToggleFavourite`, `LocationForm` и др.). Достигнуть охвата кода ≥ 70 %.
   * Настроить e2e-тесты (Cypress/Playwright): проверить сценарии: регистрация пользователя, создание локации, поиск, постановка лайка, редактирование, удаление.
   * Расширить CI: при PR прогонять линтер, unit-тесты, e2e-тесты; остановка на падении.
   * Написать README/Roadmap.md (данный документ) в папке `/docs`. Прописать инструкции по запуску, окружению (переменные Supabase, NEXTAUTH\_SECRET), деплою (Vercel).
