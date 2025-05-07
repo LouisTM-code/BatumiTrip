@@ -4,7 +4,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
 import { useUIStore } from '@/store/uiStore';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 9;
 
 /**
  * Кастомный хук загрузки списка локаций с учётом

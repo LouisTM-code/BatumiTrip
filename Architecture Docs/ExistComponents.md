@@ -185,13 +185,23 @@ export default function AddLocationButton({ className = '' }) {
 * **Используемые библиотеки:** React Query для запросов к API, Framer Motion для анимации появления новых карточек, Tailwind для сетки/стилей.
 **Актаульный код LocationList:**
 ```js
-'use client';
-import { useEffect, useRef } from 'react';
-import { useLocations } from '@/hooks/useLocations';
-import LocationCard from '@/components/LocationCard';
-import SkeletonCard from '@/components/SkeletonCard';
+"use client";
 
-export default function LocationList() {
+import React, { useEffect } from "react";
+import { useInView } from "react-intersection-observer";
+
+import { useLocations } from "@/hooks/useLocations";
+import SkeletonCard from "@/components/SkeletonCard";
+import LocationCard from "@/components/LocationCard";
+
+/**
+ * LocationList — контейнер для списка карточек локаций.
+ * При монтировании вызывает useLocations() (useInfiniteQuery).
+ * Пока isLoading — рендерит несколько SkeletonCard.
+ * Затем выводит LocationCard для каждой локации.
+ * При скролле до конца (Intersection Observer) — вызывает fetchNextPage().
+ */
+const LocationList = () => {
   const {
     data,
     isLoading,
@@ -200,54 +210,54 @@ export default function LocationList() {
     hasNextPage,
     isFetchingNextPage,
   } = useLocations();
+  const { ref, inView } = useInView();
 
-  const sentinelRef = useRef(null);
-
-  // IntersectionObserver для подзагрузки следующей страницы
+  // При появлении таргета вьюпорт вызывает загрузку следующей страницы
   useEffect(() => {
-    if (!sentinelRef.current || !hasNextPage) return;
+    if (inView && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, fetchNextPage]);
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        fetchNextPage();
-      }
-    });
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchNextPage]);
-
-  if (isError) {
+  if (isLoading) {
+    // Рендерим 6 скелетонов пока идёт загрузка :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
     return (
-      <p className="text-destructive text-center">Не удалось загрузить локации…</p>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[...Array(6)].map((_, idx) => (
+          <SkeletonCard key={idx} />
+        ))}
+      </div>
     );
   }
 
-  const locations = data?.pages.flatMap((p) => p.items) ?? [];
+  if (isError) {
+    return <div className="text-red-500">Ошибка загрузки локаций</div>;
+  }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {/* Первичная загрузка */}
-      {isLoading &&
-        Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`s${i}`} />)}
-
-      {/* Сами локации */}
-      {locations.map((loc) => (
-        <LocationCard key={loc.id} {...loc} />
-      ))}
-
-      {/* Sentinel */}
-      <div ref={sentinelRef} className="h-1" />
-
-      {/* Лоадер при подгрузке */}
-      {isFetchingNextPage &&
-        Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={`n${i}`} />)}
-    </div>
+    <>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {data.pages.map(page =>
+          page.items.map(location => (
+            <LocationCard key={location.id} location={location} />
+          ))
+        )}
+      </div>
+      {/* Целевая точка для Intersection Observer */}
+      <div ref={ref} className="py-8 text-center">
+        {isFetchingNextPage
+          ? "Загрузка..."
+          : hasNextPage
+          ? "Прокрутите вниз для загрузки новых"
+          : "Больше нет локаций"}
+      </div>
+    </>
   );
-}
-```
+};
 
----
+export default LocationList;
+
+```
 
 ---
 ### `route.js` — NextAuth‑эндпоинт `app/api/auth/[...nextauth]/route.js`
@@ -453,6 +463,101 @@ export default function LoginModal() {
 ```
 
 ---
+### LocationCard
+
+* **Назначение:** Карточка-превью локации, отображающая краткую информацию (изображение, заголовок, часть описания, теги, стоимость). При клике ведет на детальную страницу локации.
+* **Пропсы:**
+  * `id: string` — идентификатор локации.
+  * `title: string` — заголовок локации.
+  * `description: string` — краткое описание.
+  * `imageUrl: string` — URL изображения.
+  * `tags: string[]` — список названий тегов.
+  * `cost?: string` — стоимость или ценовая категория.
+  * `isFavourite?: boolean` — локация в избранном
+* **Контракты:** Передаваемые пропсы формируются из данных API (Supabase) по таблице `locations` с объединением тегов.
+* **Взаимодействие:** 
+  * При рендере отображает картинку (с обрезкой по размеру), заголовок, первые 2–3 строки описания и `TagBadge` для каждого тега, иконку `избранное`⭐ (filled / outline).
+  * При наведении или загрузке карточка может слегка масштабироваться или появляться с анимацией Framer Motion (повышенный UX). По клику на карточку или кнопку "Подробнее" вызывает `router.push('/locations/${id}')`.
+  * Клик по иконке вызывает хук useToggleFavourite(id) →
+  – если не было любимо, POST /rest/v1/favourites (или RPC add_favourite)
+  – если было, DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}. Хук оптимистично обновляет favourites в Zustand и invalidates ['favourites', userId].
+* **Используемые библиотеки:** Tailwind для макета карточки, shadcn для типографики и кнопок внутри карточки, Framer Motion для анимации появления (fade-in, scale).
+**Актаульный код LocationCard:**:
+```js
+"use client";
+import React, { memo } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Star } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+const LocationCard = ({ location }) => {
+  const { id, title, description, imgUrl, tags, isFavourite } = location;
+
+  return (
+    <motion.div
+      layout
+      whileHover={{ scale: 1.02 }}
+      className="group relative rounded-2xl bg-white p-4 shadow transition-shadow"
+    >
+      <Link href={`/locations/${id}`}>
+        <Image
+          src={imgUrl}
+          alt={title}
+          width={400}
+          height={240}
+          className="h-40 w-full rounded-lg object-cover"
+        />
+        <h3 className="mt-4 text-lg font-semibold text-gray-900">{title}</h3>
+        <p className="mt-2 text-sm text-gray-600">
+          {description.length > 100 ? `${description.slice(0, 100)}…` : description}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <p>теги...</p>
+        </div>
+      </Link>
+      <div
+        className={cn(
+          "absolute top-4 right-4 rounded-full p-2 shadow",
+          isFavourite && "text-yellow-500"
+        )}
+        aria-label={isFavourite ? "Удалено из избранного" : "Добавлено в избранное"}
+      >
+        <Star size={20} />
+      </div>
+    </motion.div>
+  );
+};
+export default memo(LocationCard);
+```
+---
+### SkeletonCard
+
+* **Назначение:** Заглушка-карточка для отображения во время загрузки данных (placeholder skeleton).
+* **Пропсы:** Не требует пропсов или может принимать `count?: number` для генерации нескольких, но обычно используется как отдельный компонент (несколько рендерятся).
+* **Взаимодействие:** Отображает серый блок с анимацией пульсации (используя классы Tailwind `animate-pulse` или Framer Motion) вместо реальной карточки. Используется в том же контейнере `LocationList` при загрузке данных.
+* **Используемые библиотеки:** Tailwind (классы skeleton), Framer Motion (или CSS) для анимации эффекта пульсации.
+**Актаульный код SkeletonCard:**
+```js
+"use client";
+import React from "react";
+
+const SkeletonCard = () => (
+  <div className="animate-pulse rounded-2xl bg-gray-200 p-4 shadow">
+    <div className="h-40 w-full rounded-lg bg-gray-300"></div>
+    <div className="mt-4 h-6 w-3/4 rounded bg-gray-300"></div>
+    <div className="mt-2 h-4 w-1/2 rounded bg-gray-300"></div>
+    <div className="mt-4 flex space-x-2">
+      <div className="h-6 w-16 rounded bg-gray-300"></div>
+      <div className="h-6 w-16 rounded bg-gray-300"></div>
+    </div>
+  </div>
+);
+export default SkeletonCard;
+```
+
+---
 ### Providers.js
 
 * **Назначение:** Единожды инициализирует `QueryClient`, оборачивает приложение в React Query, Auth и Theme провайдеры; подключает Devtools в dev‑среде.&#x20;
@@ -530,6 +635,74 @@ export function useAuth() {
     signIn,
     signOut,
   };
+}
+```
+
+---
+### useLocations.js
+
+* **Назначение:** Кастомный хук для получения и управления списком локаций.
+* **Функционал:** Оборачивает React Query (`useInfiniteQuery` или `useQuery`) для обращения к Supabase API (REST) или через клиентский SDK. Поддерживает параметры пагинации (limit, offset или курсор) и фильтрации (по `searchQuery` и выбранным тегам из Zustand). Возвращает `data` (массив локаций), `isLoading`, `isError`, `fetchNextPage`, `hasNextPage` и т. д. Поддерживает оптимистическое обновление при мутациях (добавление, обновление, удаление) через React Query.
+* **Использование:** Применяется на главной странице (`LocationListPage`) для загрузки списка; может использоваться и на странице детализации для получения одного элемента (например, через `useQuery(['location', id], ...)`). Также может содержать функции добавления/удаления тегов (`RPC` или патчи через Supabase) как методы `mutate`.
+**Актаульный код useLocations.js:** 
+```js
+// hooks/useLocations.js
+'use client';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { useUIStore } from '@/store/uiStore';
+
+const PAGE_SIZE = 9;
+
+export function useLocations() {
+  const searchQuery = useUIStore((s) => s.searchQuery);
+  const selectedTags = useUIStore((s) => s.selectedTags);
+
+  const fetchLocations = async ({ pageParam = null }) => {
+    let query = supabase
+      .from('locations')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(PAGE_SIZE);
+
+    // Курсор: берём записи «старше» (меньше created_at)
+    if (pageParam) {
+      query = query.lt('created_at', pageParam);
+    }
+
+    // Поиск по заголовку (ilike, нечувствительно к регистру)
+    if (searchQuery) {
+      query = query.ilike('title', `%${searchQuery}%`);
+    }
+
+    // Фильтрация по выбранным тегам (JOIN locations_tags)
+    if (selectedTags.length) {
+      query = query
+        .in(
+          'id',
+          supabase
+            .from('locations_tags')
+            .select('location_id')
+            .in('tag_id', selectedTags)
+        );
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return {
+      items: data,
+      nextCursor:
+        data.length === PAGE_SIZE ? data[data.length - 1].created_at : undefined,
+    };
+  };
+
+  return useInfiniteQuery({
+    queryKey: ['locations', { search: searchQuery, tags: selectedTags }],
+    queryFn: fetchLocations,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    staleTime: 60_000, // 1 минута (см. StateManagement‑BatumiTrip.md § 2.1)
+  });
 }
 ```
 

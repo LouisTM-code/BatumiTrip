@@ -31,55 +31,6 @@
 * **Используемые библиотеки:** shadcn (`Input`), Tailwind для стилей, Zustand для хранения `searchQuery`.
 **Актаульный код SearchBar:** *Ещё не рализован*
 
-### LocationCard
-
-* **Назначение:** Карточка-превью локации, отображающая краткую информацию (изображение, заголовок, часть описания, теги, стоимость). При клике ведет на детальную страницу локации.
-* **Пропсы:**
-
-  * `id: string` — идентификатор локации.
-  * `title: string` — заголовок локации.
-  * `description: string` — краткое описание.
-  * `imageUrl: string` — URL изображения.
-  * `tags: string[]` — список названий тегов.
-  * `cost?: string` — стоимость или ценовая категория.
-  * `isFavourite?: boolean` — локация в избранном
-* **Контракты:** Передаваемые пропсы формируются из данных API (Supabase) по таблице `locations` с объединением тегов.
-* **Взаимодействие:** 
-  * При рендере отображает картинку (с обрезкой по размеру), заголовок, первые 2–3 строки описания и `TagBadge` для каждого тега, иконку `избранное`⭐ (filled / outline).
-  * При наведении или загрузке карточка может слегка масштабироваться или появляться с анимацией Framer Motion (повышенный UX). По клику на карточку или кнопку "Подробнее" вызывает `router.push('/locations/${id}')`.
-  * Клик по иконке вызывает хук useToggleFavourite(id) →
-  – если не было любимо, POST /rest/v1/favourites (или RPC add_favourite)
-  – если было, DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}. Хук оптимистично обновляет favourites в Zustand и invalidates ['favourites', userId].
-* **Используемые библиотеки:** Tailwind для макета карточки, shadcn для типографики и кнопок внутри карточки, Framer Motion для анимации появления (fade-in, scale).
-**Актаульный код LocationCard:**:
-```js
-'use client';
-export default function LocationCard({ title, description }) {
-  return (
-    <div className="bg-card rounded-lg shadow p-4">
-      <h3 className="text-lg font-semibold mb-2">{title}</h3>
-      {description && <p className="text-muted-foreground text-sm line-clamp-3">{description}</p>}
-    </div>
-  );
-}
-```
-
-### SkeletonCard
-
-* **Назначение:** Заглушка-карточка для отображения во время загрузки данных (placeholder skeleton).
-* **Пропсы:** Не требует пропсов или может принимать `count?: number` для генерации нескольких, но обычно используется как отдельный компонент (несколько рендерятся).
-* **Взаимодействие:** Отображает серый блок с анимацией пульсации (используя классы Tailwind `animate-pulse` или Framer Motion) вместо реальной карточки. Используется в том же контейнере `LocationList` при загрузке данных.
-* **Используемые библиотеки:** Tailwind (классы skeleton), Framer Motion (или CSS) для анимации эффекта пульсации.
-**Актаульный код SkeletonCard:**
-```js
-'use client';
-export default function SkeletonCard() {
-  return (
-    <div className="bg-muted/40 rounded-lg h-40 animate-pulse" />
-  );
-}
-```
-
 ### TagBadge
 
 * **Назначение:** Визуальный компонент для отображения отдельного тега (например, категории) локации.
@@ -149,13 +100,6 @@ export default function SkeletonCard() {
 
 ---
 ## Пользовательские хуки и глобальное состояние
-
-### useLocations.js
-
-* **Назначение:** Кастомный хук для получения и управления списком локаций.
-* **Функционал:** Оборачивает React Query (`useInfiniteQuery` или `useQuery`) для обращения к Supabase API (REST) или через клиентский SDK. Поддерживает параметры пагинации (limit, offset или курсор) и фильтрации (по `searchQuery` и выбранным тегам из Zustand). Возвращает `data` (массив локаций), `isLoading`, `isError`, `fetchNextPage`, `hasNextPage` и т. д. Поддерживает оптимистическое обновление при мутациях (добавление, обновление, удаление) через React Query.
-* **Использование:** Применяется на главной странице (`LocationListPage`) для загрузки списка; может использоваться и на странице детализации для получения одного элемента (например, через `useQuery(['location', id], ...)`). Также может содержать функции добавления/удаления тегов (`RPC` или патчи через Supabase) как методы `mutate`.
-**Актаульный код useLocations.js:** *Ещё не рализован*
 
 ### useOneLocation.js
 

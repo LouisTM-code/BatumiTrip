@@ -1,14 +1,20 @@
-'use client';
-import { useEffect, useRef } from 'react';
-import { useLocations } from '@/hooks/useLocations';
-import LocationCard from '@/components/LocationCard';
-import SkeletonCard from '@/components/SkeletonCard';
+"use client";
+
+import React, { useEffect } from "react";
+import { useInView } from "react-intersection-observer";
+
+import { useLocations } from "@/hooks/useLocations";
+import SkeletonCard from "@/components/SkeletonCard";
+import LocationCard from "@/components/LocationCard";
 
 /**
- * Контейнер списка локаций с бесконечной прокруткой.
- * Описан в ComponentsDesign‑BatumiTrip.md (LocationList).
+ * LocationList — контейнер для списка карточек локаций.
+ * При монтировании вызывает useLocations() (useInfiniteQuery).
+ * Пока isLoading — рендерит несколько SkeletonCard.
+ * Затем выводит LocationCard для каждой локации.
+ * При скролле до конца (Intersection Observer) — вызывает fetchNextPage().
  */
-export default function LocationList() {
+const LocationList = () => {
   const {
     data,
     isLoading,
@@ -17,48 +23,49 @@ export default function LocationList() {
     hasNextPage,
     isFetchingNextPage,
   } = useLocations();
+  const { ref, inView } = useInView();
 
-  const sentinelRef = useRef(null);
-
-  // IntersectionObserver для подзагрузки следующей страницы
+  // При появлении таргета вьюпорт вызывает загрузку следующей страницы
   useEffect(() => {
-    if (!sentinelRef.current || !hasNextPage) return;
+    if (inView && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, hasNextPage, fetchNextPage]);
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        fetchNextPage();
-      }
-    });
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [hasNextPage, fetchNextPage]);
-
-  if (isError) {
+  if (isLoading) {
+    // Рендерим 6 скелетонов пока идёт загрузка :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
     return (
-      <p className="text-destructive text-center">Не удалось загрузить локации…</p>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {[...Array(6)].map((_, idx) => (
+          <SkeletonCard key={idx} />
+        ))}
+      </div>
     );
   }
 
-  const locations = data?.pages.flatMap((p) => p.items) ?? [];
+  if (isError) {
+    return <div className="text-red-500">Ошибка загрузки локаций</div>;
+  }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {/* Первичная загрузка */}
-      {isLoading &&
-        Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`s${i}`} />)}
-
-      {/* Сами локации */}
-      {locations.map((loc) => (
-        <LocationCard key={loc.id} {...loc} />
-      ))}
-
-      {/* Sentinel */}
-      <div ref={sentinelRef} className="h-1" />
-
-      {/* Лоадер при подгрузке */}
-      {isFetchingNextPage &&
-        Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={`n${i}`} />)}
-    </div>
+    <>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {data.pages.map(page =>
+          page.items.map(location => (
+            <LocationCard key={location.id} location={location} />
+          ))
+        )}
+      </div>
+      {/* Целевая точка для Intersection Observer */}
+      <div ref={ref} className="py-8 text-center">
+        {isFetchingNextPage
+          ? "Загрузка..."
+          : hasNextPage
+          ? "Прокрутите вниз для загрузки новых"
+          : "Больше нет локаций"}
+      </div>
+    </>
   );
-}
+};
+
+export default LocationList;
