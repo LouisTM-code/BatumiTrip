@@ -495,7 +495,15 @@ import { useUIStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 
 const LocationCard = ({ location }) => {
-  const { id, title, description, imgUrl, tags, isFavourite } = location;
+  const { id, title, description, imgUrl, tags = [], isFavourite } = location;
+  // текущее состояние фильтра  
+  const selectedTags = useUIStore((s) => s.selectedTags);
+  // карточка видна, только если содержит ВСЕ выбранные теги
+  const matchesFilter =
+    selectedTags.length === 0 ||
+    selectedTags.every((tag) => tags.includes(tag));
+
+  if (!matchesFilter) return null;           // << ключевая строка
 
   return (
     <motion.div
@@ -512,24 +520,25 @@ const LocationCard = ({ location }) => {
           className="h-40 w-full rounded-lg object-cover"
         />
         <h3 className="mt-4 text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">
-          {description.length > 100 ? `${description.slice(0, 100)}…` : description}
+        <p className="mt-2 text-sm text-gray-600 line-clamp-3">
+          {description}
         </p>
       </Link>
+      {/* теги — теперь без пропа onClick, TagBadge управляет фильтром сам */}
       <div className="mt-3 flex flex-wrap gap-2">
-        {tags?.map((tag) => (
-          <TagBadge
-            key={tag}
-            name={tag}
-            onClick={(t) => useUIStore.getState().toggleTag(t)}            />
+        {tags.map((tag) => (
+          <TagBadge key={tag} name={tag} />
         ))}
       </div>
+
       <div
         className={cn(
           "absolute top-4 right-4 rounded-full p-2 shadow",
           isFavourite && "text-yellow-500"
         )}
-        aria-label={isFavourite ? "Удалено из избранного" : "Добавлено в избранное"}
+        aria-label={
+          isFavourite ? "Удалено из избранного" : "Добавлено в избранное"
+        }
       >
         <Star size={20} />
       </div>
@@ -552,37 +561,37 @@ export default memo(LocationCard);
 "use client";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useUIStore } from "@/store/uiStore";
 /**
- * TagBadge — компактный «pill»‑бейдж для отображения/выбора тега локации.
- *
- * @prop {string}  name      – текст тега
- * @prop {(tag:string)=>void} [onClick]
- * @prop {string}  [className]
- *
- * Если передан onClick → элемент получает role="button"
- * и лёгкую анимацию hover/tap через Framer Motion.
+ * Бейдж‑тег, который сам переключает фильтр.
+ * Выбранные теги берём из Zustand, поэтому отдельный
+ * prop `onClick` больше не нужен.
  */
-export default function TagBadge({ name, onClick, className }) {
-  const interactive = typeof onClick === "function";
-
-  const handleClick = (e) => {
-    if (!interactive) return
-      e.stopPropagation();
-      e.preventDefault();
-      onClick(name);
-  };
+export default function TagBadge({ name, className }) {
+  // селектор через zustand — важно, чтобы объект не пересоздавался лишний раз
+  const selectedTags =  useUIStore((s) => s.selectedTags);
+  const toggleTag = useUIStore((s) => s.toggleTag);
+  const isActive = selectedTags.includes(name);
 
   return (
-      <motion.span
-        whileHover={interactive ? { scale: 1.05 } : undefined}
-        whileTap={interactive ? { scale: 0.95 } : undefined}
-        onClick={handleClick}
-      role={interactive ? "button" : undefined}
-      aria-label={interactive ? `Фильтровать по тегу «${name}»` : undefined}
+    <motion.span
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleTag(name);
+      }}
+      role="button"
+      aria-pressed={isActive}
+      aria-label={`Фильтр по тегу «${name}»`}
       className={cn(
-        "inline-flex select-none items-center rounded-full border border-border",
-        "bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground",
-        interactive && "cursor-pointer hover:bg-secondary/20",
+        // базовые стили
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium select-none transition",
+        // состояние
+        isActive
+          ? "bg-secondary text-secondary-foreground border-secondary"
+          : "bg-muted text-muted-foreground border-border hover:bg-secondary/20",
         className
       )}
     >
