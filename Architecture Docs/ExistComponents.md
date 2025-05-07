@@ -67,21 +67,24 @@ export default function LocationListPage() {
 **Актаульный код Header:**
 ```js
 "use client";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useUIStore } from "@/store/uiStore";
 import { Button } from "@/components/ui/button";
 import LoginModal from "@/components/LoginModal";
-import { motion } from "framer-motion";
-import { LogOut, LogIn } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { LogOut, LogIn, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import SearchBar from "@/components/SearchBar";
 
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
-
+  const [isSearchOpen, setSearchOpen] = useState(false);
   const handleLoginClick = () => setLoginModal(true);
+  const toggleSearch = () => setSearchOpen((o) => !o);
 
   return (
     <>
@@ -98,15 +101,23 @@ export default function Header({ className }) {
       >
         {/* Logo */}
         <Link href="/" className="flex items-center">
-            <Image
-            src="/logo.png"          // файл public/logo.png
+          <Image
+            src="/logo.png"
             alt="Batumi Trip logo"
-            width={150}          
-            height={100}             
-            className="object-contain" />
+            width={150}
+            height={100}
+            className="object-contain"
+          />
           <span className="sr-only">Batumi Trip</span>
         </Link>
-
+        {/* Search Icon */}
+        <button
+          onClick={toggleSearch}
+          aria-label="Поиск"
+          className="p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded"
+        >
+          <Search className="h-6 w-6" aria-hidden="true" />
+        </button>
         {/* Auth section */}
         {user ? (
           <div className="flex items-center gap-4">
@@ -136,9 +147,85 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
-
+      {/* Search bar */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="container mx-auto px-4 py-2 flex justify-end">
+              <SearchBar placeholder="Найти локацию..." />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <LoginModal />
     </>
+  );
+}
+```
+---
+### SearchBar
+
+* **Назначение:** Поле поиска по заголовкам
+* **Пропсы:** Опционально `placeholder: string` (текст подсказки).
+* **Взаимодействие:** Пользователь вводит текст, он сохраняется в глобальном состоянии (например, Zustand) как текущий поисковый запрос (`searchQuery`). Поисковое состояние используют `useLocations` или компонент списка для фильтрации вывода. Возможна функциональность debounce (задержка поиска после ввода) для оптимизации запросов.
+* **Используемые библиотеки:** shadcn (`Input`), Tailwind для стилей, Zustand для хранения `searchQuery`. Framer Motion для анимации появления
+**Актаульный код SearchBar:**
+```js
+"use client";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Input } from "@/components/ui/input";
+import { useUIStore } from "@/store/uiStore";
+import { cn } from "@/lib/utils";
+/**
+ * SearchBar — поле ввода для поиска локаций по заголовку и тегам.
+ * Самостоятельно сохраняет текст запроса в global‑store (Zustand).
+ *
+ * Props:
+ *  @param {string} [placeholder] — текст плейсхолдера ввода (по умолчанию «Поиск локаций…»)
+ */
+export default function SearchBar({ placeholder = "Поиск локаций…", className }) {
+  /* Глобальный Zustand store */
+  const searchQuery = useUIStore((s) => s.searchQuery);
+  const setSearchQuery = useUIStore((s) => s.setSearchQuery);
+  /* Локальное состояние ввода */
+  const [value, setValue] = useState(searchQuery);
+  /* Debounce (1000 мс) перед обновлением Zustand */
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      // Обновляем global‑state только если строка изменилась
+      if (value !== searchQuery) {
+        setSearchQuery(value);
+      }
+    }, 1000);
+    return () => window.clearTimeout(id);
+  }, [value, searchQuery, setSearchQuery]);
+  /* Сбрасываем локальный инпут, если глобальное состояние поменялось извне */
+  useEffect(() => {
+    if (searchQuery !== value) setValue(searchQuery);
+  }, [searchQuery]);
+
+  return (
+    <motion.div
+      initial={{ y: -8, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={cn("w-full", className)}
+    >
+      <Input
+        type="search"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={placeholder}
+        aria-label="Поле поиска локаций"
+        className="w-full" // Tailwind: растягиваем на 100 %
+      />
+    </motion.div>
   );
 }
 ```

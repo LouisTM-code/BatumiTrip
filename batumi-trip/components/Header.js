@@ -1,28 +1,24 @@
 "use client";
+
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useUIStore } from "@/store/uiStore";
 import { Button } from "@/components/ui/button";
 import LoginModal from "@/components/LoginModal";
-import { motion } from "framer-motion";
-import { LogOut, LogIn } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { LogOut, LogIn, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import SearchBar from "@/components/SearchBar";
 
-/**
- * Header – верхняя навигационная панель.
- *
- * ▸ Показывает логотип приложения (ссылку на главную страницу).
- * ▸ Если пользователь НЕ аутентифицирован – кнопка «Войти» открывает LoginModal (через Zustand).
- * ▸ Если аутентифицирован – отображает его id и кнопку «Выйти» (NextAuth signOut).
- * ▸ Анимация: лёгкий slide-down + fade-in при монтировании;
- *   фон – основной цвет (primary) с прозрачностью + мягкая тень.
- */
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
+  const [isSearchOpen, setSearchOpen] = useState(false);
 
   const handleLoginClick = () => setLoginModal(true);
+  const toggleSearch = () => setSearchOpen((o) => !o);
 
   return (
     <>
@@ -39,14 +35,24 @@ export default function Header({ className }) {
       >
         {/* Logo */}
         <Link href="/" className="flex items-center">
-            <Image
-            src="/logo.png"          // файл public/logo.png
+          <Image
+            src="/logo.png"
             alt="Batumi Trip logo"
-            width={150}          
-            height={100}             
-            className="object-contain" />
+            width={150}
+            height={100}
+            className="object-contain"
+          />
           <span className="sr-only">Batumi Trip</span>
         </Link>
+
+        {/* Search Icon */}
+        <button
+          onClick={toggleSearch}
+          aria-label="Поиск"
+          className="p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded"
+        >
+          <Search className="h-6 w-6" aria-hidden="true" />
+        </button>
 
         {/* Auth section */}
         {user ? (
@@ -77,6 +83,22 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
+
+      {/* Search bar */}
+      <AnimatePresence>
+        {isSearchOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="container mx-auto px-4 py-2 flex justify-end">
+              <SearchBar placeholder="Найти локацию..." />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <LoginModal />
     </>
