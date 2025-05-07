@@ -189,12 +189,14 @@ alter table public.users      enable row level security;
 
 create policy "Users: everyone select"
   on public.users for select using (true);
-create policy "Users: self insert"
-  on public.users for insert with check (auth.uid()::text = id);
-create policy "Users: self update"
+create policy "Users: anon insert"
+  on public.users
+  for insert
+  with check (true);
+create policy "Users: anon update"
   on public.users for update
-    using (auth.uid()::text = id)
-    with check (auth.uid()::text = id);
+  using (true)
+  with check (true);
 create policy "Users: self delete"
   on public.users for delete using (auth.uid()::text = id);
 

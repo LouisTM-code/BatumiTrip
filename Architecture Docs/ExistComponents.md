@@ -33,6 +33,223 @@ export default function RootLayout({ children }) {
 ```
 
 ---
+### LocationListPage (Главная страница списка)
+
+* **Назначение:** Страница-лендинг, отображающая весь интерфейс поиска и просмотра списка локаций текущего пользователя.
+* **Пропсы:** Нет (получает данные через хук и глобальные параметры).
+* **Взаимодействие:** На странице располагаются `SearchBar`, `AddLocationButton` и `LocationList`. При загрузке инициируется хук `useLocations`, который подгружает первые локации. Пользователь может вводить текст поиска (сохраняется в Zustand), и запрос динамически фильтруется. Когда данных нет или пользователь только что вошел, `LocationList` показывает `SkeletonCard`.
+* **Используемые библиотеки:** React Query (через `useLocations`), Zustand (для фильтров), shadcn для кнопок и форм, Tailwind/Framer Motion для стилей и анимаций.
+**Актаульный код LocationListPage:**
+```js
+// app/page.js  (роут /)
+import LocationList from '@/components/LocationList';
+import AddLocationButton from '@/components/AddLocationButton'
+import Header from '@/components/Header';
+
+export default function LocationListPage() {
+  return (
+    <main className="container mx-auto px-4 py-6 space-y-6">
+      <Header />
+      <LocationList />
+      <AddLocationButton />
+    </main>
+  );
+}
+```
+
+---
+### Header
+
+* **Назначение:** Навигационная панель (обычно шапка страницы) с названием приложения и кнопкой авторизации/выхода.
+* **Пропсы:** Нет пропсов (информацию о пользователе получает через глобальное состояние или `useAuth`).
+* **Взаимодействие:** Показывает название или логотип приложения. Если пользователь не авторизован, отображает кнопку "Войти". Нажатие на кнопку "Войти" открывает `LoginModal` (контролируется глобальным состоянием, например Zustand). Если пользователь авторизован, может показывать приветствие и кнопку "Выйти", вызывающую функцию `signOut()` из `useAuth`.
+* **Используемые библиотеки:** Шаблоны стилей через Tailwind, компоненты `Button` из shadcn.
+**Актаульный код Header:**
+```js
+"use client";
+import Image from "next/image";
+import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
+import { useUIStore } from "@/store/uiStore";
+import { Button } from "@/components/ui/button";
+import LoginModal from "@/components/LoginModal";
+import { motion } from "framer-motion";
+import { LogOut, LogIn } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export default function Header({ className }) {
+  const { user, signOut } = useAuth();
+  const setLoginModal = useUIStore((s) => s.setLoginModal);
+
+  const handleLoginClick = () => setLoginModal(true);
+
+  return (
+    <>
+      <motion.header
+        initial={{ y: -16, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+        className={cn(
+          "sticky top-0 z-30 flex w-full items-center justify-between px-4 py-3",
+          "bg-primary/90 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/80",
+          "shadow-md text-primary-foreground",
+          className
+        )}
+      >
+        {/* Logo */}
+        <Link href="/" className="flex items-center">
+            <Image
+            src="/logo.png"          // файл public/logo.png
+            alt="Batumi Trip logo"
+            width={150}          
+            height={100}             
+            className="object-contain" />
+          <span className="sr-only">Batumi Trip</span>
+        </Link>
+
+        {/* Auth section */}
+        {user ? (
+          <div className="flex items-center gap-4">
+            <span className="select-none text-base font-semibold">
+              {user.id}
+            </span>
+            <Button
+              size="md"
+              variant="secondary"
+              onClick={() => signOut()}
+              aria-label="Выйти"
+              className="gap-2 px-4 py-2"
+            >
+              <LogOut className="h-5 w-5" aria-hidden="true" />
+              <span className="not-sr-only">Выйти</span>
+            </Button>
+          </div>
+        ) : (
+          <Button
+            size="md"
+            onClick={handleLoginClick}
+            aria-label="Войти"
+            className="gap-2 px-4 py-2"
+          >
+            <LogIn className="h-5 w-5" aria-hidden="true" />
+            <span className="not-sr-only">Войти</span>
+          </Button>
+        )}
+      </motion.header>
+
+      <LoginModal />
+    </>
+  );
+}
+```
+
+---
+### AddLocationButton
+
+* **Назначение:** Кнопка для перехода к форме создания новой локации.
+* **Пропсы:** Нет (или `onClick?: () => void` если не использует навигацию по ссылке).
+* **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
+* **Используемые библиотеки:** shadcn (`Button`), Tailwind для стилизации.
+**Актаульный код AddLocationButton:**
+```js
+'use client';
+import Link from 'next/link';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+export default function AddLocationButton({ className = '' }) {
+  return (
+    <Button
+      asChild
+      className={`fixed bottom-4 right-4 sm:static flex items-center gap-2 ${className}`}
+      aria-label="Добавить локацию"
+    >
+      <Link href="/locations/new">
+        <Plus className="w-4 h-4" aria-hidden="true" />
+        <span className="sr-only sm:not-sr-only">Добавить локацию</span>
+      </Link>
+    </Button>
+  );
+}
+```
+
+---
+### LocationList (список локаций)
+
+* **Назначение:** Контейнер для отображения коллекции карточек локаций с поддержкой бесконечной прокрутки.
+* **Пропсы: нет** — компонент **всегда** забирает данные через кастомный хук `useLocations()` это исключает неоднозначность API и упрощает автогенерацию.
+* **Взаимодействие:** 
+  * При монтировании вызывает useLocations() (useInfiniteQuery) и получает локации, отфильтрованные по searchQuery и selectedTags из Zustand.
+  * При прокрутке до конца списка вызывает fetchNextPage() для подгрузки данных (infinite scroll).
+  * Во время загрузки отображает SkeletonCard. Для каждой локации рендерит LocationCard.
+* **Используемые библиотеки:** React Query для запросов к API, Framer Motion для анимации появления новых карточек, Tailwind для сетки/стилей.
+**Актаульный код LocationList:**
+```js
+'use client';
+import { useEffect, useRef } from 'react';
+import { useLocations } from '@/hooks/useLocations';
+import LocationCard from '@/components/LocationCard';
+import SkeletonCard from '@/components/SkeletonCard';
+
+export default function LocationList() {
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useLocations();
+
+  const sentinelRef = useRef(null);
+
+  // IntersectionObserver для подзагрузки следующей страницы
+  useEffect(() => {
+    if (!sentinelRef.current || !hasNextPage) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        fetchNextPage();
+      }
+    });
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasNextPage, fetchNextPage]);
+
+  if (isError) {
+    return (
+      <p className="text-destructive text-center">Не удалось загрузить локации…</p>
+    );
+  }
+
+  const locations = data?.pages.flatMap((p) => p.items) ?? [];
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Первичная загрузка */}
+      {isLoading &&
+        Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`s${i}`} />)}
+
+      {/* Сами локации */}
+      {locations.map((loc) => (
+        <LocationCard key={loc.id} {...loc} />
+      ))}
+
+      {/* Sentinel */}
+      <div ref={sentinelRef} className="h-1" />
+
+      {/* Лоадер при подгрузке */}
+      {isFetchingNextPage &&
+        Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={`n${i}`} />)}
+    </div>
+  );
+}
+```
+
+---
+
+---
 ### `route.js` — NextAuth‑эндпоинт `app/api/auth/[...nextauth]/route.js`
 * **Назначение:** Обрабатывает все HTTP‑запросы NextAuth (`GET`, `POST`) и конфигурирует password‑less аутентификацию через Credentials Provider. Создаёт пользователя в таблице `users`, если тот входит впервые.
 * **Пропсы:** Файл не экспортирует React‑компонент, поэтому пропсов нет.
@@ -47,80 +264,45 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { supabase } from '@/lib/supabaseClient';
 
 export const authOptions = {
-  // 1) Провайдер Credentials без пароля
   providers: [
     CredentialsProvider({
-      name: '',
+      name: 'Login',
       credentials: {
-        username: { label: 'Как мне стоит тебя называть?🧐', type: 'text', placeholder: 'Введите имя' },
+        username: { label: 'Логин', type: 'text', placeholder: 'ivan' },
       },
-      async authorize(credentials) {
-        const username = credentials?.username?.trim();
-        if (!username) return null;
+      async authorize(creds) {
+        const username = creds?.username?.trim();
+        const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/; // допустимые символы
 
-        // 1. Добавление или обновление пользователя в Supabase
+        if (!username || !re.test(username)) return null;
+
         const { error } = await supabase
           .from('users')
-          .upsert({ id: username }, { returning: 'minimal' });
-        if (error) {
-          console.error('Ошибка при upsert пользователя:', error);
-          throw new Error('Не удалось создать пользователя');
-        }
+          .upsert({ id: username }, { onConflict: 'id' });
 
-        // 2. Возвращаем объект пользователя для NextAuth
+        if (error) {
+          console.error('Supabase upsert error', error);
+          return null;
+        }
         return { id: username };
       },
     }),
   ],
-  // 2) Сессии и JWT
-  session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 дней
-  },
-  jwt: {
-    secret: process.env.NEXTAUTH_SECRET,
-  },
-  // 3) Колбэки для наполнения токена и session.user
+
+  session: { strategy: 'jwt', maxAge: 60 * 60 * 24 * 30 }, // 30 дней
+
   callbacks: {
-    async jwt({ token, user }) {
-      // При первом логине сохраняем id пользователя в token
+    jwt: ({ token, user }) => {
       if (user?.id) token.id = user.id;
       return token;
     },
-    async session({ session, token }) {
-      // Считываем из Supabase всю запись о пользователе
-      if (token.id) {
-        const { data: userRecord, error } = await supabase
-          .from('users')
-          .select('id, created_at, updated_at')
-          .eq('id', token.id)
-          .single();
-        if (error) {
-          console.error('Ошибка при получении пользователя:', error);
-          session.user = { id: token.id };
-        } else {
-          session.user = userRecord;
-        }
-      }
+    session: ({ session, token }) => {
+      if (token?.id) session.user = { id: token.id };
       return session;
     },
   },
-  // 4) Явная конфигурация HTTP-only cookie
-  cookies: {
-    sessionToken: {
-      name:
-        process.env.NODE_ENV === 'production'
-          ? '__Secure-next-auth.session-token'
-          : 'next-auth.session-token',
-      options: {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-    },
-  },
-  // 5) Secret для подписи JWT и CSRF токенов
+
+  pages: { signIn: '/' },      // остаёмся на / — LoginModal всё перекроет
   secret: process.env.NEXTAUTH_SECRET,
 };
 
@@ -156,54 +338,116 @@ export default function AuthProvider({ children }) {
 * **Используемые библиотеки:** `next-auth/react`, Zustand, **shadcn** (`Dialog`, `Input`, `Button`), React.
 **Актаульный код LoginModal.js:**
 ```js
-'use client';
-import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+"use client";
+import { useState, useEffect } from "react";
+import { signIn, useSession } from "next-auth/react";
+import { useUIStore } from "@/store/uiStore";
 import {
   Dialog,
+  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { useUIStore } from '@/store/uiStore';
+  DialogOverlay,
+  DialogPortal,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function LoginModal() {
-  const show    = useUIStore((s) => s.showLoginModal);
+  const show = useUIStore((s) => s.showLoginModal);
   const setShow = useUIStore((s) => s.setLoginModal);
-  const [login, setLogin] = useState('');
+  const { status } = useSession();
+
+  const [error, setError] = useState("");
+  const [login, setLogin] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Закрыть при авторизации
+  useEffect(() => {
+    if (status === "authenticated") setShow(false);
+  }, [status, setShow]);
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!login.trim()) return;
-    await signIn('credentials', { username: login, redirect: false });
-    setShow(false);              // закрыть модалку после успешного входа
+    const trimmed = login.trim();
+    const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/;
+    if (!re.test(trimmed)) {
+      setError(
+        "Неверное имя: только буквы латиницы и кириллицы, без цифр и спецсимволов, 3–32 символа."
+        );
+      return;
+    }
+    setIsSubmitting(true);
+    await signIn("credentials", {
+      username: trimmed,
+      redirect: false,
+    });
+    setIsSubmitting(false);
   }
 
   return (
-    <Dialog open={show} onOpenChange={setShow}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Войти без пароля</DialogTitle>
-        </DialogHeader>
+    <AnimatePresence>
+      {show && (
+        <Dialog open={show} onOpenChange={setShow}>
+          <DialogPortal>                                  {/* ① */}
+            <DialogOverlay />                              {/* ② */}
+            <DialogContent>                                {/* ③ */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="bg-card text-card-foreground rounded-xl shadow-lg w-full max-w-sm overflow-hidden"
+              >
+                <DialogHeader className="px-6 pt-6">
+                  <DialogTitle className="text-center text-xl font-semibold">
+                    Войти без пароля
+                  </DialogTitle>
+                </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            placeholder="Введите логин"
-            value={login}
-            onChange={(e) => setLogin(e.target.value)}
-          />
+                <form
+                  onSubmit={handleSubmit}
+                  className="space-y-4 px-6 pb-6 pt-4"
+                  aria-label="Форма входа"
+                >
+                  <Input
+                    id="username"
+                    placeholder="Ваш логин"
+                    autoComplete="username"
+                    value={login}
+                    onChange={(e) => setLogin(e.target.value)}
+                    required
+                  />
 
-          <DialogFooter>
-            <Button type="submit" className="w-full">
-              Войти
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden bg-red-100 border border-red-300 text-red-800 rounded p-2 text-sm"
+                      >
+                        {error}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <DialogFooter>
+                    <Button type="submit" className="w-full" disabled={isSubmitting}>
+                      {isSubmitting ? "Входим…" : "Войти"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </motion.div>
+            </DialogContent>
+          </DialogPortal>
+        </Dialog>
+      )}
+    </AnimatePresence>
   );
 }
 ```
@@ -378,7 +622,10 @@ import { createClient } from '@supabase/supabase-js';
 
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    global: { fetch },
+  }
 );
 ```
 
