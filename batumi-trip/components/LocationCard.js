@@ -6,7 +6,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import { motion } from "framer-motion";
-
+import TagBadge from "@/components/TagBadge";
+import { useUIStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 /**
  * LocationCard — карточка локации
@@ -33,10 +34,15 @@ const LocationCard = ({ location }) => {
         <p className="mt-2 text-sm text-gray-600">
           {description.length > 100 ? `${description.slice(0, 100)}…` : description}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <p>теги...</p>
-        </div>
       </Link>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {tags?.map((tag) => (
+          <TagBadge
+            key={tag}
+            name={tag}
+            onClick={(t) => useUIStore.getState().toggleTag(t)}            />
+        ))}
+      </div>
       <div
         className={cn(
           "absolute top-4 right-4 rounded-full p-2 shadow",

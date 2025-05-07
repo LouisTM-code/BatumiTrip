@@ -490,6 +490,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { Star } from "lucide-react";
 import { motion } from "framer-motion";
+import TagBadge from "@/components/TagBadge";
+import { useUIStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 
 const LocationCard = ({ location }) => {
@@ -513,10 +515,15 @@ const LocationCard = ({ location }) => {
         <p className="mt-2 text-sm text-gray-600">
           {description.length > 100 ? `${description.slice(0, 100)}…` : description}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <p>теги...</p>
-        </div>
       </Link>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {tags?.map((tag) => (
+          <TagBadge
+            key={tag}
+            name={tag}
+            onClick={(t) => useUIStore.getState().toggleTag(t)}            />
+        ))}
+      </div>
       <div
         className={cn(
           "absolute top-4 right-4 rounded-full p-2 shadow",
@@ -530,6 +537,59 @@ const LocationCard = ({ location }) => {
   );
 };
 export default memo(LocationCard);
+```
+
+---
+### TagBadge
+
+* **Назначение:** Визуальный компонент для отображения отдельного тега (например, категории) локации.
+* **Пропсы:** `name: string` — текст тега. Возможно `onClick?: (tag: string) => void` для обработки клика.
+* **Контракты:** Получает имя тега из данных. Теги формируются из таблицы `tags` или через запрос связей `locations_tags`.
+* **Взаимодействие:** Показывает слово в рамке или подложке (badge), стиль — фоновый цвет и скругления через Tailwind. При клике (если задан `onClick`) может обновлять глобальное состояние фильтра (Zustand), чтобы отфильтровать список по выбранному тегу. Используется внутри `LocationCard` и `LocationDetail`.
+* **Используемые библиотеки:** Tailwind для стиля бейджа, shadcn возможен для Badge-стиля, Framer Motion — опционально для эффекта наведения.
+**Актаульный код TagBadge:**
+```js
+"use client";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+/**
+ * TagBadge — компактный «pill»‑бейдж для отображения/выбора тега локации.
+ *
+ * @prop {string}  name      – текст тега
+ * @prop {(tag:string)=>void} [onClick]
+ * @prop {string}  [className]
+ *
+ * Если передан onClick → элемент получает role="button"
+ * и лёгкую анимацию hover/tap через Framer Motion.
+ */
+export default function TagBadge({ name, onClick, className }) {
+  const interactive = typeof onClick === "function";
+
+  const handleClick = (e) => {
+    if (!interactive) return
+      e.stopPropagation();
+      e.preventDefault();
+      onClick(name);
+  };
+
+  return (
+      <motion.span
+        whileHover={interactive ? { scale: 1.05 } : undefined}
+        whileTap={interactive ? { scale: 0.95 } : undefined}
+        onClick={handleClick}
+      role={interactive ? "button" : undefined}
+      aria-label={interactive ? `Фильтровать по тегу «${name}»` : undefined}
+      className={cn(
+        "inline-flex select-none items-center rounded-full border border-border",
+        "bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground",
+        interactive && "cursor-pointer hover:bg-secondary/20",
+        className
+      )}
+    >
+      {name}
+    </motion.span>
+  );
+}
 ```
 ---
 ### SkeletonCard
@@ -646,7 +706,6 @@ export function useAuth() {
 * **Использование:** Применяется на главной странице (`LocationListPage`) для загрузки списка; может использоваться и на странице детализации для получения одного элемента (например, через `useQuery(['location', id], ...)`). Также может содержать функции добавления/удаления тегов (`RPC` или патчи через Supabase) как методы `mutate`.
 **Актаульный код useLocations.js:** 
 ```js
-// hooks/useLocations.js
 'use client';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
@@ -661,37 +720,39 @@ export function useLocations() {
   const fetchLocations = async ({ pageParam = null }) => {
     let query = supabase
       .from('locations')
-      .select('*')
+      .select('*, locations_tags(tag_id, tags(name))')
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
-
     // Курсор: берём записи «старше» (меньше created_at)
     if (pageParam) {
       query = query.lt('created_at', pageParam);
     }
-
     // Поиск по заголовку (ilike, нечувствительно к регистру)
     if (searchQuery) {
       query = query.ilike('title', `%${searchQuery}%`);
     }
-
     // Фильтрация по выбранным тегам (JOIN locations_tags)
-    if (selectedTags.length) {
-      query = query
-        .in(
-          'id',
-          supabase
-            .from('locations_tags')
-            .select('location_id')
-            .in('tag_id', selectedTags)
-        );
+   if (selectedTags.length) {
+      const {data: tagRows, error: tagError } = await supabase
+        .from('tags')
+        .select('id,name')
+        .in('name', selectedTags);
+      if (tagError) throw tagError;
+      const tagIds = tagRows.map((t) => t.id);
+      query = query.in('locations_tags.tag_id', tagIds);
     }
 
     const { data, error } = await query;
+    console.log('got', data.length, 'items; last created_at =', data[data.length-1]?.created_at);
     if (error) throw error;
+    // Преобразуем сырой ответ, вынося из relations только массив имён тегов
+    const items = data.map(({ locations_tags, ...loc }) => ({
+    ...loc,
+    tags: locations_tags.map((lt) => lt.tags.name),
+    }));
 
     return {
-      items: data,
+      items,
       nextCursor:
         data.length === PAGE_SIZE ? data[data.length - 1].created_at : undefined,
     };
@@ -701,7 +762,7 @@ export function useLocations() {
     queryKey: ['locations', { search: searchQuery, tags: selectedTags }],
     queryFn: fetchLocations,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 60_000, // 1 минута (см. StateManagement‑BatumiTrip.md § 2.1)
+    staleTime: 60_000,
   });
 }
 ```
@@ -816,6 +877,37 @@ import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
+}
+```
+
+---
+### useTags
+
+* **Назначение:** Хук для получения и кеширования списка тегов.
+* **Функционал:**
+  * `useQuery(['tags'], () => GET /rest/v1/tags?select=*)`, `{ staleTime: 5*60_000 }`.
+  * Возвращает массив тегов, доступный для фильтрации и автодополнения в формах.
+* **Использование:** `SearchBar` (фильтр), `LocationForm` (multi‑select теги), а также страницы аналитики.
+**Актаульный код useTags:**
+```js
+"use client";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
+
+/** Возвращает [{ id, name }] из таблицы `tags` с кэшированием 5 минут. */
+export function useTags() {
+  return useQuery({
+    queryKey: ["tags"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("tags")
+        .select("*")
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60_000, // 5 минут
+  });
 }
 ```
 

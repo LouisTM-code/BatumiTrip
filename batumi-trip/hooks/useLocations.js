@@ -23,9 +23,10 @@ export function useLocations() {
      */
     let query = supabase
       .from('locations')
-      .select('*')
+      .select('*, locations_tags(tag_id, tags(name))')
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
+    
 
     // Курсор: берём записи «старше» (меньше created_at)
     if (pageParam) {
@@ -38,22 +39,28 @@ export function useLocations() {
     }
 
     // Фильтрация по выбранным тегам (JOIN locations_tags)
-    if (selectedTags.length) {
-      query = query
-        .in(
-          'id',
-          supabase
-            .from('locations_tags')
-            .select('location_id')
-            .in('tag_id', selectedTags)
-        );
+   if (selectedTags.length) {
+      const {data: tagRows, error: tagError } = await supabase
+        .from('tags')
+        .select('id,name')
+        .in('name', selectedTags);
+      if (tagError) throw tagError;
+      const tagIds = tagRows.map((t) => t.id);
+      query = query.in('locations_tags.tag_id', tagIds);
     }
 
     const { data, error } = await query;
+    console.log('got', data.length, 'items; last created_at =', data[data.length-1]?.created_at);
     if (error) throw error;
 
+    // Преобразуем сырой ответ, вынося из relations только массив имён тегов
+    const items = data.map(({ locations_tags, ...loc }) => ({
+    ...loc,
+    tags: locations_tags.map((lt) => lt.tags.name),
+    }));
+
     return {
-      items: data,
+      items,
       nextCursor:
         data.length === PAGE_SIZE ? data[data.length - 1].created_at : undefined,
     };
@@ -63,6 +70,6 @@ export function useLocations() {
     queryKey: ['locations', { search: searchQuery, tags: selectedTags }],
     queryFn: fetchLocations,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 60_000, // 1 минута (см. StateManagement‑BatumiTrip.md § 2.1)
+    staleTime: 60_000,
   });
 }
