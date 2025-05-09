@@ -830,7 +830,96 @@ export default function ChooseTag({ control, name = "tags", rules }) {
   );
 }
 ```
+---
+### AttachImage
 
+* **Назначение:** предназначен для загрузки и предварительного просмотра изображений в `LocationForm`
+* **Пропсы:** `control` – объект управления из react-hook-form; `imageFile`
+* **Взаимодействие:**
+  * Позволяет выбрать изображение с устройства.
+  * Отображает предпросмотр выбранного изображения.
+  * Предоставляет возможность удалить выбранное изображение.
+  * Очищает ссылку URL.createObjectURL, чтобы избежать утечек памяти.
+* **Используемые библиотеки:** `react-hook-form`, `lucide-react`
+**Актаульный код AttachImage.js:**
+```js
+'use client';
+import React, { useEffect, useRef, useState } from "react";
+import { useController } from "react-hook-form";
+import { Upload, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export default function AttachImage({ control, name = "imageFile", rules, className }) {
+  const inputRef = useRef(null);
+  const [preview, setPreview] = useState(null);
+
+  const {
+    field: { value, onChange, ref },
+    fieldState: { error },
+  } = useController({ control, name, rules });
+  // передаём весь FileList, а не один файл
+  const handleSelect = (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    onChange(files);
+    const url = URL.createObjectURL(files[0]);
+    setPreview(url);
+  };
+
+  const handleRemove = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    onChange(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      {!preview && (
+        <label
+          className="flex flex-col items-center justify-center w-full max-w-xs gap-2 rounded-lg border-2 border-dashed border-border p-6 cursor-pointer text-sm text-muted-foreground hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Загрузить изображение"
+        >
+          <Upload className="h-6 w-6" aria-hidden="true" />
+          <span>Нажмите чтобы выбрать фото</span>
+          <input
+            type="file"
+            accept="image/*"
+            ref={(el) => {
+              ref(el);
+              inputRef.current = el;
+            }}
+            onChange={handleSelect}
+            className="sr-only"
+          />
+        </label>
+      )}
+      {preview && (
+        <div className="relative w-full max-w-xs">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={preview}
+            alt="Предпросмотр изображения"
+            className="h-48 w-full rounded-lg object-cover"
+          />
+          <button
+            type="button"
+            onClick={handleRemove}
+            aria-label="Удалить изображение"
+            className="absolute top-1 right-1 inline-flex items-center justify-center rounded-full bg-black/60 p-1 text-white backdrop-blur hover:bg-black/80 focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive-foreground">{error.message}</p>}
+    </div>
+  );
+}
+```
 ---
 ### LocationForm
 
@@ -844,14 +933,17 @@ export default function ChooseTag({ control, name = "tags", rules }) {
 ```js
 // components/LocationForm.js
 'use client';
+
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
+import AttachImage from './AttachImage';
 import { useAddLocation } from '@/hooks/useAddLocation';
 import { useRouter } from 'next/navigation';
+
 /**
  * Форма добавления/редактирования локации.
  * Теперь использует ChooseTag для работы с массивом тегов.
@@ -953,16 +1045,8 @@ export default function LocationForm({ initialData } = {}) {
 
       {/* Загрузка изображения */}
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium">
-          Изображение
-        </label>
-        <Input
-          id="imageFile"
-          type="file"
-          accept="image/*"
-          {...register('imageFile')}
-          className="mt-1 w-full"
-        />
+        <label className="block text-sm font-medium">Изображение</label>
+        <AttachImage control={control} name="imageFile" className="mt-1" />
       </div>
 
       <Button type="submit" disabled={addLocation.isLoading}>
@@ -1094,12 +1178,10 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabaseClient';
 
-/**
- * Хук для создания новой локации + тегов через RPC create_location_with_tags.
- */
 export function useAddLocation() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
+  const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
 
   return useMutation({
     mutationFn: async (formData) => {
@@ -1108,6 +1190,7 @@ export function useAddLocation() {
       }
       const user_id = session.user.id;
       const { imageFile, tags, ...rest } = formData;
+      console.log("▶ imageFile:", formData.imageFile);
 
       // 1. Нормализация тегов в массив строк
       let tagList = [];
@@ -1123,22 +1206,21 @@ export function useAddLocation() {
       // 2. Загрузка картинки, если передан FileList
       let image_url = null;
       if (imageFile?.length) {
-        const file = imageFile[0];
+        const file = imageFile[0];                // первый файл из FileList
         const ext = file.name.split('.').pop();
         const filePath = `${Date.now()}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
-          .from('locations')
+          .from(bucket)
           .upload(filePath, file);
         if (uploadError) throw uploadError;
 
         const { data: urlData } = supabase.storage
-          .from('locations')
+          .from(bucket)
           .getPublicUrl(filePath);
         image_url = urlData.publicUrl;
       }
-      console.log('tagList:', tagList);
-
+      console.log("▶ imageFile:", formData.imageFile);
       // 3. Atomic RPC: создаёт локацию + теги + связи
       const { data, error } = await supabase.rpc(
         'create_location_with_tags',
@@ -1154,7 +1236,6 @@ export function useAddLocation() {
         }
       );
       if (error) throw error;
-
       return data;
     },
     onSuccess: () => {

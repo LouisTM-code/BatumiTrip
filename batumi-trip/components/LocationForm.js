@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
+import AttachImage from './AttachImage';
 import { useAddLocation } from '@/hooks/useAddLocation';
 import { useRouter } from 'next/navigation';
 
@@ -111,16 +112,8 @@ export default function LocationForm({ initialData } = {}) {
 
       {/* Загрузка изображения */}
       <div>
-        <label htmlFor="imageFile" className="block text-sm font-medium">
-          Изображение
-        </label>
-        <Input
-          id="imageFile"
-          type="file"
-          accept="image/*"
-          {...register('imageFile')}
-          className="mt-1 w-full"
-        />
+        <label className="block text-sm font-medium">Изображение</label>
+        <AttachImage control={control} name="imageFile" className="mt-1" />
       </div>
 
       <Button type="submit" disabled={addLocation.isLoading}>
