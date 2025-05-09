@@ -56,6 +56,7 @@ export function useLocations() {
     // Преобразуем сырой ответ, вынося из relations только массив имён тегов
     const items = data.map(({ locations_tags, ...loc }) => ({
     ...loc,
+    imgUrl: loc.image_url,
     tags: locations_tags.map((lt) => lt.tags.name),
     }));
 

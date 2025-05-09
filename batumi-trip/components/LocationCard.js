@@ -29,7 +29,7 @@ const LocationCard = ({ location }) => {
     >
       <Link href={`/locations/${id}`}>
         <Image
-          src={imgUrl}
+          src={imgUrl || "https://cataas.com/cat/gif"}
           alt={title}
           width={400}
           height={240}

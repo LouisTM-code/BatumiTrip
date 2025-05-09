@@ -613,7 +613,7 @@ const LocationCard = ({ location }) => {
     selectedTags.length === 0 ||
     selectedTags.every((tag) => tags.includes(tag));
 
-  if (!matchesFilter) return null;           // << ключевая строка
+  if (!matchesFilter) return null;           
 
   return (
     <motion.div
@@ -623,7 +623,7 @@ const LocationCard = ({ location }) => {
     >
       <Link href={`/locations/${id}`}>
         <Image
-          src={imgUrl}
+          src={imgUrl || "https://cataas.com/cat/gif"}
           alt={title}
           width={400}
           height={240}
@@ -1293,9 +1293,10 @@ export function useLocations() {
     const { data, error } = await query;
     console.log('got', data.length, 'items; last created_at =', data[data.length-1]?.created_at);
     if (error) throw error;
-    // Преобразуем сырой ответ, вынося из relations только массив имён тегов
+
     const items = data.map(({ locations_tags, ...loc }) => ({
     ...loc,
+    imgUrl: loc.image_url,
     tags: locations_tags.map((lt) => lt.tags.name),
     }));
 
