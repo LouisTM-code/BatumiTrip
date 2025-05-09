@@ -58,6 +58,29 @@ export default function LocationListPage() {
 ```
 
 ---
+### AddLocationPage - `app/locations/new/page.js`
+
+* **Назначение:** Страница с формой создания новой локации.
+* **Пропсы:** Нет.
+* **Взаимодействие:** Содержит `LocationForm` без `initialData`. Сабмит формы вызывает `useAddLocation().mutate(data)`, а при успехе перенаправляет на детальную страницу новой локации.
+* **Используемые библиотеки:** React Hook Form (или аналог) для обработки формы, shadcn для элементов формы, Tailwind для верстки.
+**Актаульный код AddLocationPage:**
+```js
+'use client';
+import React from 'react';
+import LocationForm from '@/components/LocationForm';
+
+export default function AddLocationPage() {
+  return (
+    <main className="container mx-auto px-4 py-6">
+      <h1 className="text-2xl font-bold mb-4">Добавить локацию</h1>
+      <LocationForm />
+    </main>
+  );
+}
+```
+
+---
 ### Header
 
 * **Назначение:** Навигационная панель (обычно шапка страницы) с названием приложения и кнопкой авторизации/выхода.
@@ -688,6 +711,268 @@ export default function TagBadge({ name, className }) {
 }
 ```
 ---
+### ChooseTag
+
+* **Назначение:** компонент множественного выбора/добавления тегов внутри LocationForm.
+* **Взаимодействие:** Выбрать существующий тег одним кликом. Добавить собственный тег, которого ещё нет в базе. Загружает список тегов через useTags(); Интеграция с react-hook-form (useController) → field.value = string[]; При вводе нового тега вызывает INSERT через Supabase;После успешного создания инвали дация ['tags'] и автоматическое добавление к выбранным тегам;
+* **Используемые библиотеки:** Tailwind для стиля бейджа, shadcn возможен для Badge-стиля, Framer Motion — опционально для эффекта наведения.
+**Актаульный код ChooseTag:**
+```js
+"use client";
+import React, { useState } from "react";
+import { useController } from "react-hook-form";
+import { useTags } from "@/hooks/useTags";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+
+export default function ChooseTag({ control, name = "tags", rules }) {
+  const {
+    field: { value: selected = [], onChange },
+  } = useController({ control, name, rules });
+
+  const { data: tags = [], isLoading, isError } = useTags();
+  const [newTag, setNewTag] = useState("");
+  const queryClient = useQueryClient();
+
+  const createTag = useMutation({
+    mutationFn: async (name) => {
+      const trimmed = name.trim();
+      const { data, error } = await supabase
+        .from("tags")
+        .insert({ name: trimmed })
+        .select()
+        .single();
+      if (error && error.code !== "23505") throw error;
+      return data ?? { name: trimmed };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries(["tags"]);
+      if (!selected.includes(data.name)) onChange([...selected, data.name]);
+      setNewTag("");
+    },
+  });
+
+  const toggle = (tag) => {
+    if (selected.includes(tag)) onChange(selected.filter((t) => t !== tag));
+    else onChange([...selected, tag]);
+  };
+
+  const handleAdd = () => {
+    const trimmed = newTag.trim();
+    if (!trimmed) return;
+    const exists = tags.some((t) => t.name.toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      if (!selected.includes(trimmed)) toggle(trimmed);
+      setNewTag("");
+      return;
+    }
+    createTag.mutate(trimmed);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Существующие теги */}
+      <div className="flex flex-wrap gap-2">
+        {isLoading && <span className="text-sm text-muted-foreground">Загрузка тегов…</span>}
+        {isError && <span className="text-sm text-destructive-foreground">Ошибка загрузки тегов</span>}
+        {tags.map((tag) => (
+          <motion.span
+            key={tag.id}
+            whileTap={{ scale: 0.95 }}
+            role="button"
+            aria-pressed={selected.includes(tag.name)}
+            onClick={() => toggle(tag.name)}
+            className={cn(
+              "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium select-none transition cursor-pointer",
+              selected.includes(tag.name)
+                ? "bg-secondary text-secondary-foreground border-secondary"
+                : "bg-muted text-muted-foreground border-border hover:bg-secondary/20"
+            )}
+          >
+            {tag.name}
+          </motion.span>
+        ))}
+      </div>
+
+      {/* Добавить свой тег */}
+      <div className="flex gap-2" role="form">
+        <Input
+          value={newTag}
+          onChange={(e) => setNewTag(e.target.value)}
+          placeholder="Добавить тег…"
+          aria-label="Новый тег"
+          className="flex-1"
+          onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAdd())}
+        />
+        <Button type="button" disabled={createTag.isLoading || !newTag.trim()} onClick={handleAdd}>
+          {createTag.isLoading ? "…" : "Добавить"}
+        </Button>
+      </div>
+
+      {/* Ошибка создания тега */}
+      <AnimatePresence>
+        {createTag.isError && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden text-sm text-destructive-foreground"
+          >
+            Ошибка: {createTag.error?.message || 'не удалось добавить тег'}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+```
+
+---
+### LocationForm
+
+* **Назначение:** Универсальная форма для добавления или редактирования локации.
+* **Пропсы:** Возможно `initialData?: Location` (для редактирования) и `onSubmit?: (data) => void`.
+* **Контракты:** Поля формы соответствуют колонкам таблицы `locations`: заголовок, описание, адрес, стоимость, URL, а также выбор тегов и загрузка изображения.
+* **Взаимодействие:** В режиме добавления (`initialData` отсутствует) при сабмите вызывает `useMutation` для `POST /locations`. В режиме редактирования вызывает `PATCH` с существующим `id`. Для тегов использует список из таблицы `tags` (подача либо select-опций, либо ввод/предложение). Для загрузки изображения вызывает Supabase Storage или другую API. После успешной операции могут быть вызваны callback и навигация.
+* **Работа с тегами:** При изменении списка тегов вызываются RPC‑функции: `add_location_tag({ location_id, tag_id })` для добавления, `remove_location_tag({ location_id, tag_id })` для удаления. Эти вызовы обёрнуты в useMutation‑хуки и сопровождаются оптимистическим обновлением кеша `['location', id]`.
+* **Используемые библиотеки:** React Hook Form (взаимодействие с полями), shadcn (`Form`, `Input`, `Textarea`, `Select`, `Button`, `File Upload`), Tailwind. Framer Motion может анимировать динамический добавление полей (например, новые теги).
+**Актаульный код LocationForm:**
+```js
+// components/LocationForm.js
+'use client';
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import ChooseTag from '@/components/ChooseTag';
+import { useAddLocation } from '@/hooks/useAddLocation';
+import { useRouter } from 'next/navigation';
+/**
+ * Форма добавления/редактирования локации.
+ * Теперь использует ChooseTag для работы с массивом тегов.
+ */
+export default function LocationForm({ initialData } = {}) {
+  const router = useRouter();
+  const addLocation = useAddLocation();
+
+  const {
+    control,
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      ...initialData,
+      tags: initialData?.tags || [],     // обязательно задаём tags: [] по-умолчанию
+    },
+  });
+
+  const onSubmit = (data) => {
+    addLocation.mutate(data, {
+      onSuccess: (location) => {
+        console.log('send');
+      },
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Заголовок, описание, адрес и т.д. */}
+      <div>
+        <label htmlFor="title" className="block text-sm font-medium">
+          Заголовок
+        </label>
+        <Input
+          id="title"
+          {...register('title', { required: 'Обязательное поле' })}
+          className="mt-1 w-full"
+        />
+        {errors.title && (
+          <p className="mt-1 text-sm text-red-600">
+            {errors.title.message}
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label htmlFor="description" className="block text-sm font-medium">
+          Описание
+        </label>
+        <Textarea
+          id="description"
+          {...register('description')}
+          className="mt-1 w-full"
+          rows={4}
+        />
+      </div>
+
+      <div>
+        <label htmlFor="address" className="block text-sm font-medium">
+          Адрес
+        </label>
+        <Input
+          id="address"
+          {...register('address')}
+          className="mt-1 w-full"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="cost" className="block text-sm font-medium">
+          Стоимость
+        </label>
+        <Input
+          id="cost"
+          type="number"
+          {...register('cost')}
+          className="mt-1 w-full"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="sourceUrl" className="block text-sm font-medium">
+          Ссылка на источник
+        </label>
+        <Input
+          id="sourceUrl"
+          {...register('sourceUrl')}
+          className="mt-1 w-full"
+        />
+      </div>
+
+      {/* Блок выбора/добавления тегов */}
+      <div>
+        <label className="block text-sm font-medium">Теги</label>
+        <ChooseTag control={control} name="tags" />
+      </div>
+
+      {/* Загрузка изображения */}
+      <div>
+        <label htmlFor="imageFile" className="block text-sm font-medium">
+          Изображение
+        </label>
+        <Input
+          id="imageFile"
+          type="file"
+          accept="image/*"
+          {...register('imageFile')}
+          className="mt-1 w-full"
+        />
+      </div>
+
+      <Button type="submit" disabled={addLocation.isLoading}>
+        {addLocation.isLoading ? 'Сохраняем…' : 'Сохранить'}
+      </Button>
+    </form>
+  );
+}
+```
+---
 ### SkeletonCard
 
 * **Назначение:** Заглушка-карточка для отображения во время загрузки данных (placeholder skeleton).
@@ -791,6 +1076,92 @@ export function useAuth() {
     signIn,
     signOut,
   };
+}
+```
+---
+### useAddLocation
+
+* **Назначение:** Мутация для создания новой локации.
+* **Функционал:** 
+  * `useMutation(addLocationFn, { onSuccess }).`
+  * `addLocationFn` загружает изображение в Supabase Storage (если файл присутствует), получает `publicUrl`, затем `POST /rest/v1/locations` c телом `{ …payload, image_url: publicUrl }`.
+  * В `onSuccess` инвалидируются `['locations']` и `['tags']`.
+* **Использование:** `LocationForm` в `AddLocationPage`
+**Актаульный код useAddLocation:**
+```js
+'use client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabaseClient';
+
+/**
+ * Хук для создания новой локации + тегов через RPC create_location_with_tags.
+ */
+export function useAddLocation() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (formData) => {
+      if (!session?.user?.id) {
+        throw new Error('Пользователь не авторизован');
+      }
+      const user_id = session.user.id;
+      const { imageFile, tags, ...rest } = formData;
+
+      // 1. Нормализация тегов в массив строк
+      let tagList = [];
+      if (Array.isArray(tags)) {
+        tagList = tags;
+      } else if (typeof tags === 'string' && tags.trim()) {
+        tagList = tags
+          .split(',')
+          .map(t => t.trim())
+          .filter(Boolean);
+      }
+
+      // 2. Загрузка картинки, если передан FileList
+      let image_url = null;
+      if (imageFile?.length) {
+        const file = imageFile[0];
+        const ext = file.name.split('.').pop();
+        const filePath = `${Date.now()}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('locations')
+          .upload(filePath, file);
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from('locations')
+          .getPublicUrl(filePath);
+        image_url = urlData.publicUrl;
+      }
+      console.log('tagList:', tagList);
+
+      // 3. Atomic RPC: создаёт локацию + теги + связи
+      const { data, error } = await supabase.rpc(
+        'create_location_with_tags',
+        {
+          p_user_id:     user_id,
+          p_title:       rest.title,
+          p_description: rest.description,
+          p_address:     rest.address,
+          p_cost:        rest.cost,
+          p_source_url:  rest.sourceUrl,
+          p_image_url:   image_url,
+          p_tags:        tagList,
+        }
+      );
+      if (error) throw error;
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['locations']);
+      queryClient.invalidateQueries(['tags']);
+    },
+  });
 }
 ```
 

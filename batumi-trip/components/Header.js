@@ -99,7 +99,7 @@ export default function Header({ className }) {
           </motion.div>
         )}
       </AnimatePresence>
-
+        
       <LoginModal />
     </>
   );
