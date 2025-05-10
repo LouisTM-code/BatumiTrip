@@ -1010,11 +1010,14 @@ import React, { useEffect, useRef, useState } from "react";
 import { useController } from "react-hook-form";
 import { Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
+/**
+* @param {Object}   props
+* @param {string?}  [props.initialUrl] – URL уже загруженного изображения
+*/
 // Обновлённый AttachImage: сохраняем один File вместо FileList
-export default function AttachImage({ control, name = "imageFile", rules, className }) {
+export default function AttachImage({ control, name = "imageFile", rules, initialUrl = null, className }) {
   const inputRef = useRef(null);
-  const [preview, setPreview] = useState(null);
+  const [preview, setPreview] = useState(initialUrl);
 
   const {
     field: { value, onChange, ref },
@@ -1033,7 +1036,7 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
   };
 
   const handleRemove = () => {
-    if (preview) URL.revokeObjectURL(preview);
+    if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
     setPreview(null);
     onChange(null);
     if (inputRef.current) inputRef.current.value = "";
@@ -1042,7 +1045,7 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
   // Очищаем preview при unmount
   useEffect(() => {
     return () => {
-      if (preview) URL.revokeObjectURL(preview);
+      if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview);
     };
   }, [preview]);
 
@@ -1090,6 +1093,7 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
   );
 }
 ```
+
 ---
 ### LocationForm
 
@@ -1244,7 +1248,7 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
       {/* Картинка */}
       <div>
         <label className="block text-sm font-medium">Изображение</label>
-        <AttachImage control={control} name="imageFile" className="mt-1" />
+        <AttachImage control={control} name="imageFile" initialUrl={initialData.imgUrl} className="mt-1" />
       </div>
 
       {/* Кнопка */}

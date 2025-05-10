@@ -145,7 +145,7 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
       {/* Картинка */}
       <div>
         <label className="block text-sm font-medium">Изображение</label>
-        <AttachImage control={control} name="imageFile" className="mt-1" />
+        <AttachImage control={control} name="imageFile" initialUrl={initialData.imgUrl} className="mt-1" />
       </div>
 
       {/* Кнопка */}
