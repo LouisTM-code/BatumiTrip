@@ -72,3 +72,12 @@ create policy "Fav: owner insert"
 
 create policy "Fav: owner delete"
   on public.favourites for delete using (auth.uid()::text = user_id);
+
+-- IMAGE BUCKET
+create policy "Anon read" on storage.objects
+  for select using (bucket_id = 'location-images');
+
+create policy "User upload" on storage.objects
+  for insert with check (
+    bucket_id = 'location-images' and auth.role() = 'authenticated'
+  );
