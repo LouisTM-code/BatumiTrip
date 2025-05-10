@@ -64,3 +64,67 @@ begin
   return loc;
 end;
 $$;
+
+-- update_location_with_tags
+create or replace function public.update_location_with_tags(
+  p_loc_id      uuid,
+  p_title       text,
+  p_description text,
+  p_address     text,
+  p_cost        text,
+  p_source_url  text,
+  p_image_url   text,
+  p_tags        text[]
+)
+returns public.locations
+language plpgsql
+security definer
+as $$
+declare
+  loc public.locations%rowtype;
+begin
+  -- 1) Обновляем поля локации
+  update public.locations set
+    title       = p_title,
+    description = p_description,
+    address     = p_address,
+    cost        = p_cost,
+    source_url  = p_source_url,
+    image_url   = p_image_url
+  where id = p_loc_id
+  returning * into loc;
+
+  -- 2) Удаляем старые связи
+  delete from public.locations_tags
+    where location_id = p_loc_id;
+
+  -- 3) Вставляем новые теги (и создаём их, если нужно), а затем связи
+  with 
+    -- уникализируем входные имена тегов
+    input_tags as (
+      select distinct trim(t)::varchar(50) as name
+      from unnest(p_tags) as t
+    ),
+    -- вставляем новые теги, игнорируя конфликты по имени
+    ins as (
+      insert into public.tags(name)
+      select name from input_tags
+      on conflict (name) do nothing
+      returning id, name
+    ),
+    -- объединяем вновь вставленные и уже существующие теги
+    all_ids as (
+      select id from ins
+      union
+      select t.id
+      from public.tags t
+      join input_tags it on t.name = it.name
+    )
+  insert into public.locations_tags(location_id, tag_id)
+  select p_loc_id, id
+  from all_ids
+  on conflict do nothing;
+
+  return loc;
+end;
+$$;

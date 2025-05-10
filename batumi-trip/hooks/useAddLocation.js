@@ -1,60 +1,49 @@
 'use client';
-
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import uploadImage from '@/lib/uploadImage';
 
 /**
- * Хук для создания новой локации + тегов через RPC create_location_with_tags.
+ * Мутация для создания новой локации с загрузкой изображения в Storage.
  */
 export function useAddLocation() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
+  const userId = session?.user?.id;
 
   return useMutation({
     mutationFn: async (formData) => {
-      if (!session?.user?.id) {
+      if (!userId) {
         throw new Error('Пользователь не авторизован');
       }
-      const user_id = session.user.id;
       const { imageFile, tags, ...rest } = formData;
-      console.log("▶ imageFile:", formData.imageFile);
 
-      // 1. Нормализация тегов в массив строк
+      // 1. Нормализация тегов
       let tagList = [];
       if (Array.isArray(tags)) {
         tagList = tags;
       } else if (typeof tags === 'string' && tags.trim()) {
-        tagList = tags
-          .split(',')
-          .map(t => t.trim())
-          .filter(Boolean);
+        tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
       }
 
-      // 2. Загрузка картинки, если передан FileList
+      // 2. Загрузка изображения
       let image_url = null;
-      if (imageFile?.length) {
-        const file = imageFile[0];                // первый файл из FileList
-        const ext = file.name.split('.').pop();
-        const filePath = `${Date.now()}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(filePath);
-        image_url = urlData.publicUrl;
+      if (imageFile) {
+        try {
+          image_url = await uploadImage(imageFile, userId);
+        } catch (err) {
+          toast.error('Не удалось загрузить изображение');
+          throw err;
+        }
       }
-      console.log("▶ imageFile:", formData.imageFile);
-      // 3. Atomic RPC: создаёт локацию + теги + связи
+
+      // 3. Вызов RPC для создания локации вместе с тегами
       const { data, error } = await supabase.rpc(
         'create_location_with_tags',
         {
-          p_user_id:     user_id,
+          p_user_id:     userId,
           p_title:       rest.title,
           p_description: rest.description,
           p_address:     rest.address,
@@ -70,6 +59,10 @@ export function useAddLocation() {
     onSuccess: () => {
       queryClient.invalidateQueries(['locations']);
       queryClient.invalidateQueries(['tags']);
+      toast.success('Локация успешно добавлена');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Ошибка при добавлении локации');
     },
   });
 }

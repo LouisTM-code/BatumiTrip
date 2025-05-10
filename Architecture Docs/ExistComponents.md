@@ -8,9 +8,7 @@
 ### Layout.js
 
 * **Назначение:** Глобальный макет приложения, оборачивающий все страницы. Отвечает за установку провайдеров (React Query Provider, Context для темы), проверку авторизации и рендеринг общих элементов интерфейса (например, `Header` и `LoginModal`).
-* **Пропсы:** `children: ReactNode` — содержимое страницы.
 * **Взаимодействие:** Использует хук `useAuth` для проверки сессии пользователя при загрузке страницы. Если пользователь не авторизован, отображает кнопку входа в `Header`. Включает в разметку компоненты `Header` и `LoginModal`.
-* **Используемые библиотеки:** Tailwind CSS для стилей макета и фреймворк шрифтов, Context API для передачи темы или локали. В качестве анимации при переходах может использоваться Framer Motion (например, анимированный переключатель страниц).
 **Актаульный код Layout.js:**
 ```js
 import '@/styles/globals.css';
@@ -36,9 +34,7 @@ export default function RootLayout({ children }) {
 ### LocationListPage (Главная страница списка)
 
 * **Назначение:** Страница-лендинг, отображающая весь интерфейс поиска и просмотра списка локаций текущего пользователя.
-* **Пропсы:** Нет (получает данные через хук и глобальные параметры).
 * **Взаимодействие:** На странице располагаются `SearchBar`, `AddLocationButton` и `LocationList`. При загрузке инициируется хук `useLocations`, который подгружает первые локации. Пользователь может вводить текст поиска (сохраняется в Zustand), и запрос динамически фильтруется. Когда данных нет или пользователь только что вошел, `LocationList` показывает `SkeletonCard`.
-* **Используемые библиотеки:** React Query (через `useLocations`), Zustand (для фильтров), shadcn для кнопок и форм, Tailwind/Framer Motion для стилей и анимаций.
 **Актаульный код LocationListPage:**
 ```js
 // app/page.js  (роут /)
@@ -61,9 +57,7 @@ export default function LocationListPage() {
 ### AddLocationPage - `app/locations/new/page.js`
 
 * **Назначение:** Страница с формой создания новой локации.
-* **Пропсы:** Нет.
 * **Взаимодействие:** Содержит `LocationForm` без `initialData`. Сабмит формы вызывает `useAddLocation().mutate(data)`, а при успехе перенаправляет на детальную страницу новой локации.
-* **Используемые библиотеки:** React Hook Form (или аналог) для обработки формы, shadcn для элементов формы, Tailwind для верстки.
 **Актаульный код AddLocationPage:**
 ```js
 'use client';
@@ -81,12 +75,89 @@ export default function AddLocationPage() {
 ```
 
 ---
+### LocationDetailPage (Страница подробной информации)
+
+* **Назначение:** Страница с полным описанием выбранной локации.
+* **Взаимодействие:** При получении параметра `id` вызывает `useOneLocation(id)` `(useQuery(['location', id]))` для загрузки объекта; данные передаёт в `LocationDetail`. Кнопки `EditButton` и `DeleteButton` используют хуки `useUpdateLocation()` и `useDeleteLocation()` соответственно.
+**Актаульный код LocationDetailPage:**
+```js
+// app/locations/[id]/page.jsx
+'use client';
+
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';                                      // useAuth.js восстанавливает сессию из cookie и возвращает { user, isLoading } :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+import { useOneLocation } from '@/hooks/useOneLocation';
+import LocationDetail from '@/components/LocationDetail';
+import LocationForm from '@/components/LocationForm';                             // Форму для редактирования/добавления локации :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+import SkeletonCard from '@/components/SkeletonCard';
+import { Button } from '@/components/ui/button';
+
+export default function LocationDetailPage() {
+  const { id } = useParams();
+  const { user, isLoading: authLoading } = useAuth();
+  const { data: location, isLoading, isError } = useOneLocation(id);
+  const [isEditing, setIsEditing] = useState(false);
+  const router = useRouter();
+
+  // пока идёт загрузка данных или авторизации — показываем скелетон
+  if (isLoading || authLoading) {
+    return (
+      <main className="container mx-auto px-4 py-6">
+        <SkeletonCard />
+      </main>
+    );
+  }
+
+  if (isError || !location) {
+    return (
+      <main className="container mx-auto px-4 py-6 text-destructive">
+        Не удалось загрузить локацию.
+      </main>
+    );
+  }
+
+  // только автор (location.user_id) может редактировать
+  const canEdit = user?.id === location.user_id;
+
+  return (
+    <main className="container mx-auto px-4 py-6 space-y-6">
+      {/* 3. Рендерим либо просмотр, либо форму */}
+      {!isEditing ? (
+        <>
+          <LocationDetail location={location} />
+
+          {/* 1+2. Кнопка «Редактировать» здесь, и только если canEdit */}
+          {canEdit && (
+            <Button variant="secondary" onClick={() => setIsEditing(true)}>
+              Редактировать
+            </Button>
+          )}
+        </>
+      ) : (
+        <>
+          <h1 className="text-2xl font-bold">Редактировать локацию</h1>
+          <LocationForm 
+            initialData={location} 
+            onSuccess={ () => {
+              setIsEditing(false);
+            }}
+          />
+          <Button variant="link" onClick={() => setIsEditing(false)}>
+            Отмена
+          </Button>
+        </>
+      )}
+    </main>
+  );
+}
+```
+
+---
 ### Header
 
 * **Назначение:** Навигационная панель (обычно шапка страницы) с названием приложения и кнопкой авторизации/выхода.
-* **Пропсы:** Нет пропсов (информацию о пользователе получает через глобальное состояние или `useAuth`).
 * **Взаимодействие:** Показывает название или логотип приложения. Если пользователь не авторизован, отображает кнопку "Войти". Нажатие на кнопку "Войти" открывает `LoginModal` (контролируется глобальным состоянием, например Zustand). Если пользователь авторизован, может показывать приветствие и кнопку "Выйти", вызывающую функцию `signOut()` из `useAuth`.
-* **Используемые библиотеки:** Шаблоны стилей через Tailwind, компоненты `Button` из shadcn.
 **Актаульный код Header:**
 ```js
 "use client";
@@ -194,9 +265,7 @@ export default function Header({ className }) {
 ### SearchBar
 
 * **Назначение:** Поле поиска по заголовкам
-* **Пропсы:** Опционально `placeholder: string` (текст подсказки).
 * **Взаимодействие:** Пользователь вводит текст, он сохраняется в глобальном состоянии (например, Zustand) как текущий поисковый запрос (`searchQuery`). Поисковое состояние используют `useLocations` или компонент списка для фильтрации вывода. Возможна функциональность debounce (задержка поиска после ввода) для оптимизации запросов.
-* **Используемые библиотеки:** shadcn (`Input`), Tailwind для стилей, Zustand для хранения `searchQuery`. Framer Motion для анимации появления
 **Актаульный код SearchBar:**
 ```js
 "use client";
@@ -257,9 +326,7 @@ export default function SearchBar({ placeholder = "Поиск локаций…"
 ### AddLocationButton
 
 * **Назначение:** Кнопка для перехода к форме создания новой локации.
-* **Пропсы:** Нет (или `onClick?: () => void` если не использует навигацию по ссылке).
 * **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
-* **Используемые библиотеки:** shadcn (`Button`), Tailwind для стилизации.
 **Актаульный код AddLocationButton:**
 ```js
 'use client';
@@ -287,12 +354,10 @@ export default function AddLocationButton({ className = '' }) {
 ### LocationList (список локаций)
 
 * **Назначение:** Контейнер для отображения коллекции карточек локаций с поддержкой бесконечной прокрутки.
-* **Пропсы: нет** — компонент **всегда** забирает данные через кастомный хук `useLocations()` это исключает неоднозначность API и упрощает автогенерацию.
 * **Взаимодействие:** 
   * При монтировании вызывает useLocations() (useInfiniteQuery) и получает локации, отфильтрованные по searchQuery и selectedTags из Zustand.
   * При прокрутке до конца списка вызывает fetchNextPage() для подгрузки данных (infinite scroll).
   * Во время загрузки отображает SkeletonCard. Для каждой локации рендерит LocationCard.
-* **Используемые библиотеки:** React Query для запросов к API, Framer Motion для анимации появления новых карточек, Tailwind для сетки/стилей.
 **Актаульный код LocationList:**
 ```js
 "use client";
@@ -372,11 +437,9 @@ export default LocationList;
 ---
 ### `route.js` — NextAuth‑эндпоинт `app/api/auth/[...nextauth]/route.js`
 * **Назначение:** Обрабатывает все HTTP‑запросы NextAuth (`GET`, `POST`) и конфигурирует password‑less аутентификацию через Credentials Provider. Создаёт пользователя в таблице `users`, если тот входит впервые.
-* **Пропсы:** Файл не экспортирует React‑компонент, поэтому пропсов нет.
 * **Взаимодействие:**
   * При `authorize()` апсёртит логин в Supabase `users`.
   * В callback’ах прописывает `token.id` → `session.user.id`, чтобы RLS‑политики «знали» текущего пользователя (см. DataModel‑BatumiTrip.md § 5).
-* **Используемые библиотеки:** `next-auth`, `@supabase/supabase-js`, встроенный `Credentials` provider, dotenv‑переменная `NEXTAUTH_SECRET`.
 **Актаульный код route.js:**
 ```js
 import NextAuth from 'next-auth';
@@ -433,9 +496,7 @@ export { handler as GET, handler as POST };
 ---
 ### AuthProvider.js
 * **Назначение:** Оборачивает React‑дерево в `<SessionProvider>`, передавая вниз данные сессии NextAuth.&#x20;
-* **Пропсы:** `children: ReactNode`.
 * **Взаимодействие:** Используется внутри `Providers.js`; обеспечивает доступ к `useSession()` во всех дочерних компонентах.
-* **Используемые библиотеки:** `next-auth/react` (SessionProvider), React.
 **Актаульный код AuthProvider.js:**
 ```js
 'use client';
@@ -449,13 +510,10 @@ export default function AuthProvider({ children }) {
 ### LoginModal.js
 
 * **Назначение:** Показывает диалог с единственным текстовым полем для логина и кнопкой «Войти». После отправки инициирует `signIn('credentials')`.
-* **Пропсы:** Нет; видимость контролируется глобальным Zustand‑стором `uiStore`.
 * **Взаимодействие:**
-
   * Читает `showLoginModal` и `setLoginModal` из Zustand.
   * По `onSubmit` вызывает `signIn`, затем закрывает модалку.
   * При открытии/закрытии использует компоненты `Dialog*` из **shadcn**.
-* **Используемые библиотеки:** `next-auth/react`, Zustand, **shadcn** (`Dialog`, `Input`, `Button`), React.
 **Актаульный код LoginModal.js:**
 ```js
 "use client";
@@ -576,14 +634,6 @@ export default function LoginModal() {
 ### LocationCard
 
 * **Назначение:** Карточка-превью локации, отображающая краткую информацию (изображение, заголовок, часть описания, теги, стоимость). При клике ведет на детальную страницу локации.
-* **Пропсы:**
-  * `id: string` — идентификатор локации.
-  * `title: string` — заголовок локации.
-  * `description: string` — краткое описание.
-  * `imageUrl: string` — URL изображения.
-  * `tags: string[]` — список названий тегов.
-  * `cost?: string` — стоимость или ценовая категория.
-  * `isFavourite?: boolean` — локация в избранном
 * **Контракты:** Передаваемые пропсы формируются из данных API (Supabase) по таблице `locations` с объединением тегов.
 * **Взаимодействие:** 
   * При рендере отображает картинку (с обрезкой по размеру), заголовок, первые 2–3 строки описания и `TagBadge` для каждого тега, иконку `избранное`⭐ (filled / outline).
@@ -591,7 +641,6 @@ export default function LoginModal() {
   * Клик по иконке вызывает хук useToggleFavourite(id) →
   – если не было любимо, POST /rest/v1/favourites (или RPC add_favourite)
   – если было, DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}. Хук оптимистично обновляет favourites в Zustand и invalidates ['favourites', userId].
-* **Используемые библиотеки:** Tailwind для макета карточки, shadcn для типографики и кнопок внутри карточки, Framer Motion для анимации появления (fade-in, scale).
 **Актаульный код LocationCard:**:
 ```js
 "use client";
@@ -606,14 +655,17 @@ import { cn } from "@/lib/utils";
 
 const LocationCard = ({ location }) => {
   const { id, title, description, imgUrl, tags = [], isFavourite } = location;
-  // текущее состояние фильтра  
   const selectedTags = useUIStore((s) => s.selectedTags);
-  // карточка видна, только если содержит ВСЕ выбранные теги
   const matchesFilter =
     selectedTags.length === 0 ||
     selectedTags.every((tag) => tags.includes(tag));
 
-  if (!matchesFilter) return null;           
+  if (!matchesFilter) return null;
+
+  // Фолбэк для некорректных URL
+  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
+    ? imgUrl
+    : "https://cataas.com/cat/gif";
 
   return (
     <motion.div
@@ -623,7 +675,7 @@ const LocationCard = ({ location }) => {
     >
       <Link href={`/locations/${id}`}>
         <Image
-          src={imgUrl || "https://cataas.com/cat/gif"}
+          src={imageSrc}
           alt={title}
           width={400}
           height={240}
@@ -634,13 +686,11 @@ const LocationCard = ({ location }) => {
           {description}
         </p>
       </Link>
-      {/* теги — теперь без пропа onClick, TagBadge управляет фильтром сам */}
       <div className="mt-3 flex flex-wrap gap-2">
         {tags.map((tag) => (
           <TagBadge key={tag} name={tag} />
         ))}
       </div>
-
       <div
         className={cn(
           "absolute top-4 right-4 rounded-full p-2 shadow",
@@ -659,13 +709,128 @@ export default memo(LocationCard);
 ```
 
 ---
+### LocationDetail
+
+* **Назначение:** Компонент отображения подробных данных локации (используется на `LocationDetailPage`).
+* **Взаимодействие:** Показывает большие изображение и все текстовые поля локации. Теги выводит через `TagBadge`. Кнопки `EditButton` и `DeleteButton` (связанные с тем же `id`) располагаются рядом. Адрес можно сделать кликабельным (ссылка на Google Maps), `sourceUrl` — внешний ресурс.
+**Актаульный код LocationDetail:**
+```js
+'use client';
+import Image from 'next/image';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import TagBadge from '@/components/TagBadge';
+import { useRouter } from 'next/navigation';
+
+/**
+ * Компонент подробной информации о локации
+ * @param {{ location: import('@/hooks/useOneLocation').Location }} props
+ */
+export default function LocationDetail({ location }) {
+  const router = useRouter();
+  const {
+    id,
+    title,
+    description,
+    imgUrl,
+    address,
+    cost,
+    source_url: sourceUrl,
+    tags = [],
+  } = location;
+
+  // Фолбэк для некорректных URL
+  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
+    ? imgUrl
+    : "https://cataas.com/cat/gif";
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      className="space-y-6"
+    >
+      <h1 className="text-3xl font-bold">{title}</h1>
+      <div className="relative h-60 w-full overflow-hidden rounded-lg shadow">
+        <Image
+          src={imageSrc}
+          alt={title}
+          fill
+          sizes="(max-width: 768px) 100vw, 768px"
+          className="object-cover"
+        />
+      </div>
+
+      <section className="space-y-2 text-sm leading-relaxed">
+        {address && (
+          <p>
+            <strong>Адрес:&nbsp;</strong>
+            <a
+              href={`https://www.google.com/maps/search/${encodeURIComponent(
+                address
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline"
+            >
+              {address}
+            </a>
+          </p>
+        )}
+        {cost && (
+          <p>
+            <strong>Стоимость:&nbsp;</strong>
+            {cost}
+          </p>
+        )}
+        {sourceUrl && (
+          <p>
+            <strong>Источник:&nbsp;</strong>
+            <a
+              href={sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline break-all"
+            >
+              {sourceUrl}
+            </a>
+          </p>
+        )}
+      </section>
+
+      {description && (
+        <p className="prose dark:prose-invert max-w-none">{description}</p>
+      )}
+
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <TagBadge key={tag} name={tag} />
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button variant="secondary" onClick={() => router.push(`/`)}>
+          Назад
+        </Button>
+        <Button variant="destructive" onClick={() => {/* TODO: реализовать удаление */}}>
+          Удалить
+        </Button>
+      </div>
+    </motion.article>
+  );
+}
+```
+
+---
 ### TagBadge
 
 * **Назначение:** Визуальный компонент для отображения отдельного тега (например, категории) локации.
-* **Пропсы:** `name: string` — текст тега. Возможно `onClick?: (tag: string) => void` для обработки клика.
 * **Контракты:** Получает имя тега из данных. Теги формируются из таблицы `tags` или через запрос связей `locations_tags`.
 * **Взаимодействие:** Показывает слово в рамке или подложке (badge), стиль — фоновый цвет и скругления через Tailwind. При клике (если задан `onClick`) может обновлять глобальное состояние фильтра (Zustand), чтобы отфильтровать список по выбранному тегу. Используется внутри `LocationCard` и `LocationDetail`.
-* **Используемые библиотеки:** Tailwind для стиля бейджа, shadcn возможен для Badge-стиля, Framer Motion — опционально для эффекта наведения.
 **Актаульный код TagBadge:**
 ```js
 "use client";
@@ -715,7 +880,6 @@ export default function TagBadge({ name, className }) {
 
 * **Назначение:** компонент множественного выбора/добавления тегов внутри LocationForm.
 * **Взаимодействие:** Выбрать существующий тег одним кликом. Добавить собственный тег, которого ещё нет в базе. Загружает список тегов через useTags(); Интеграция с react-hook-form (useController) → field.value = string[]; При вводе нового тега вызывает INSERT через Supabase;После успешного создания инвали дация ['tags'] и автоматическое добавление к выбранным тегам;
-* **Используемые библиотеки:** Tailwind для стиля бейджа, shadcn возможен для Badge-стиля, Framer Motion — опционально для эффекта наведения.
 **Актаульный код ChooseTag:**
 ```js
 "use client";
@@ -834,13 +998,11 @@ export default function ChooseTag({ control, name = "tags", rules }) {
 ### AttachImage
 
 * **Назначение:** предназначен для загрузки и предварительного просмотра изображений в `LocationForm`
-* **Пропсы:** `control` – объект управления из react-hook-form; `imageFile`
 * **Взаимодействие:**
   * Позволяет выбрать изображение с устройства.
   * Отображает предпросмотр выбранного изображения.
   * Предоставляет возможность удалить выбранное изображение.
   * Очищает ссылку URL.createObjectURL, чтобы избежать утечек памяти.
-* **Используемые библиотеки:** `react-hook-form`, `lucide-react`
 **Актаульный код AttachImage.js:**
 ```js
 'use client';
@@ -849,6 +1011,7 @@ import { useController } from "react-hook-form";
 import { Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Обновлённый AttachImage: сохраняем один File вместо FileList
 export default function AttachImage({ control, name = "imageFile", rules, className }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -857,13 +1020,15 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
     field: { value, onChange, ref },
     fieldState: { error },
   } = useController({ control, name, rules });
-  // передаём весь FileList, а не один файл
+
+  // Сохраняем один File, а не FileList
   const handleSelect = (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    onChange(files);
-    const url = URL.createObjectURL(files[0]);
+    const file = files[0];
+    onChange(file);
+    const url = URL.createObjectURL(file);
     setPreview(url);
   };
 
@@ -874,7 +1039,12 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
+  // Очищаем preview при unmount
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -924,16 +1094,10 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
 ### LocationForm
 
 * **Назначение:** Универсальная форма для добавления или редактирования локации.
-* **Пропсы:** Возможно `initialData?: Location` (для редактирования) и `onSubmit?: (data) => void`.
 * **Контракты:** Поля формы соответствуют колонкам таблицы `locations`: заголовок, описание, адрес, стоимость, URL, а также выбор тегов и загрузка изображения.
-* **Взаимодействие:** В режиме добавления (`initialData` отсутствует) при сабмите вызывает `useMutation` для `POST /locations`. В режиме редактирования вызывает `PATCH` с существующим `id`. Для тегов использует список из таблицы `tags` (подача либо select-опций, либо ввод/предложение). Для загрузки изображения вызывает Supabase Storage или другую API. После успешной операции могут быть вызваны callback и навигация.
-* **Работа с тегами:** При изменении списка тегов вызываются RPC‑функции: `add_location_tag({ location_id, tag_id })` для добавления, `remove_location_tag({ location_id, tag_id })` для удаления. Эти вызовы обёрнуты в useMutation‑хуки и сопровождаются оптимистическим обновлением кеша `['location', id]`.
-* **Используемые библиотеки:** React Hook Form (взаимодействие с полями), shadcn (`Form`, `Input`, `Textarea`, `Select`, `Button`, `File Upload`), Tailwind. Framer Motion может анимировать динамический добавление полей (например, новые теги).
 **Актаульный код LocationForm:**
 ```js
-// components/LocationForm.js
 'use client';
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
@@ -942,15 +1106,18 @@ import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
 import AttachImage from './AttachImage';
 import { useAddLocation } from '@/hooks/useAddLocation';
+import { useUpdateLocation } from '@/hooks/useUpdateLocation';
 import { useRouter } from 'next/navigation';
 
 /**
- * Форма добавления/редактирования локации.
- * Теперь использует ChooseTag для работы с массивом тегов.
+ * Форма создания или редактирования локации.
+ * Если передан initialData.id — режим редактирования, иначе — создания.
  */
-export default function LocationForm({ initialData } = {}) {
+export default function LocationForm({ initialData = {}, onSuccess }) {
   const router = useRouter();
   const addLocation = useAddLocation();
+  const updateLocation = useUpdateLocation();
+  const isEditMode = Boolean(initialData.id);
 
   const {
     control,
@@ -959,22 +1126,49 @@ export default function LocationForm({ initialData } = {}) {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      ...initialData,
-      tags: initialData?.tags || [],     // обязательно задаём tags: [] по-умолчанию
+      title:       initialData.title       || '',
+      description: initialData.description || '',
+      address:     initialData.address     || '',
+      cost:        initialData.cost        || '',
+      sourceUrl:   initialData.sourceUrl   || '',
+      tags:        initialData.tags        || [],
+      imageFile:   null,
     },
   });
 
   const onSubmit = (data) => {
-    addLocation.mutate(data, {
-      onSuccess: (location) => {
-        console.log('send');
-      },
-    });
+    // Собираем payload с file и старым imgUrl
+    const payload = {
+      title:       data.title,
+      description: data.description,
+      address:     data.address,
+      cost:        data.cost,
+      sourceUrl:   data.sourceUrl,
+      imageFile:   data.imageFile,
+      imgUrl:      initialData.imgUrl   || null,
+      tags:        data.tags,
+    };
+
+    if (isEditMode) {
+      updateLocation.mutate(
+        { id: initialData.id, data: payload },
+        { onSuccess: () => onSuccess?.() }
+      );
+    } else {
+      addLocation.mutate(
+        payload,
+        { onSuccess: (loc) => router.push(`/locations/${loc.id}`) }
+      );
+    }
   };
+
+  const isSubmitting = isEditMode
+    ? updateLocation.isLoading
+    : addLocation.isLoading;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Заголовок, описание, адрес и т.д. */}
+      {/* Заголовок */}
       <div>
         <label htmlFor="title" className="block text-sm font-medium">
           Заголовок
@@ -991,6 +1185,7 @@ export default function LocationForm({ initialData } = {}) {
         )}
       </div>
 
+      {/* Описание */}
       <div>
         <label htmlFor="description" className="block text-sm font-medium">
           Описание
@@ -1003,6 +1198,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Адрес */}
       <div>
         <label htmlFor="address" className="block text-sm font-medium">
           Адрес
@@ -1014,6 +1210,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Стоимость */}
       <div>
         <label htmlFor="cost" className="block text-sm font-medium">
           Стоимость
@@ -1026,6 +1223,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Ссылка на источник */}
       <div>
         <label htmlFor="sourceUrl" className="block text-sm font-medium">
           Ссылка на источник
@@ -1037,20 +1235,27 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
-      {/* Блок выбора/добавления тегов */}
+      {/* Выбор тегов */}
       <div>
         <label className="block text-sm font-medium">Теги</label>
         <ChooseTag control={control} name="tags" />
       </div>
 
-      {/* Загрузка изображения */}
+      {/* Картинка */}
       <div>
         <label className="block text-sm font-medium">Изображение</label>
         <AttachImage control={control} name="imageFile" className="mt-1" />
       </div>
 
-      <Button type="submit" disabled={addLocation.isLoading}>
-        {addLocation.isLoading ? 'Сохраняем…' : 'Сохранить'}
+      {/* Кнопка */}
+      <Button type="submit" disabled={isSubmitting}>
+        {isEditMode
+          ? isSubmitting
+            ? 'Сохраняем…'
+            : 'Сохранить изменения'
+          : isSubmitting
+          ? 'Сохраняем…'
+          : 'Сохранить'}
       </Button>
     </form>
   );
@@ -1060,9 +1265,7 @@ export default function LocationForm({ initialData } = {}) {
 ### SkeletonCard
 
 * **Назначение:** Заглушка-карточка для отображения во время загрузки данных (placeholder skeleton).
-* **Пропсы:** Не требует пропсов или может принимать `count?: number` для генерации нескольких, но обычно используется как отдельный компонент (несколько рендерятся).
 * **Взаимодействие:** Отображает серый блок с анимацией пульсации (используя классы Tailwind `animate-pulse` или Framer Motion) вместо реальной карточки. Используется в том же контейнере `LocationList` при загрузке данных.
-* **Используемые библиотеки:** Tailwind (классы skeleton), Framer Motion (или CSS) для анимации эффекта пульсации.
 **Актаульный код SkeletonCard:**
 ```js
 "use client";
@@ -1086,12 +1289,9 @@ export default SkeletonCard;
 ### Providers.js
 
 * **Назначение:** Единожды инициализирует `QueryClient`, оборачивает приложение в React Query, Auth и Theme провайдеры; подключает Devtools в dev‑среде.&#x20;
-* **Пропсы:** `children: ReactNode`.
 * **Взаимодействие:**
-
   * Создаёт `queryClient` через `createQueryClient()` (см. `lib/reactQuery.js`).
   * Включает `<ReactQueryDevtools />` только если `NODE_ENV !== 'production'`.
-* **Используемые библиотеки:** `@tanstack/react-query`, `@tanstack/react-query-devtools`, React, собственные `AuthProvider`, `ThemeProvider`.
 **Актаульный код Providers.js:**
 ```js
 'use client';
@@ -1122,9 +1322,7 @@ export default function Providers({ children }) {
 ### ThemeProvider.js
 
 * **Назначение:** Делегирует управление темой пакету `next-themes`; добавляет/удаляет класс `dark` на корне документа.&#x20;
-* **Пропсы:** `children: ReactNode`.
 * **Взаимодействие:** Используется внутри `Providers.js`; читает/записывает тему в `localStorage` (механизм `next-themes`).
-* **Используемые библиотеки:** `next-themes`, React.
 **Актаульный код Providers.js:**
 ```js
 'use client';
@@ -1177,55 +1375,48 @@ export function useAuth() {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import uploadImage from '@/lib/uploadImage';
 
+/**
+ * Мутация для создания новой локации с загрузкой изображения в Storage.
+ */
 export function useAddLocation() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
-  const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
+  const userId = session?.user?.id;
 
   return useMutation({
     mutationFn: async (formData) => {
-      if (!session?.user?.id) {
+      if (!userId) {
         throw new Error('Пользователь не авторизован');
       }
-      const user_id = session.user.id;
       const { imageFile, tags, ...rest } = formData;
-      console.log("▶ imageFile:", formData.imageFile);
 
-      // 1. Нормализация тегов в массив строк
+      // 1. Нормализация тегов
       let tagList = [];
       if (Array.isArray(tags)) {
         tagList = tags;
       } else if (typeof tags === 'string' && tags.trim()) {
-        tagList = tags
-          .split(',')
-          .map(t => t.trim())
-          .filter(Boolean);
+        tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
       }
 
-      // 2. Загрузка картинки, если передан FileList
+      // 2. Загрузка изображения
       let image_url = null;
-      if (imageFile?.length) {
-        const file = imageFile[0];                // первый файл из FileList
-        const ext = file.name.split('.').pop();
-        const filePath = `${Date.now()}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
-
-        const { data: urlData } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(filePath);
-        image_url = urlData.publicUrl;
+      if (imageFile) {
+        try {
+          image_url = await uploadImage(imageFile, userId);
+        } catch (err) {
+          toast.error('Не удалось загрузить изображение');
+          throw err;
+        }
       }
-      console.log("▶ imageFile:", formData.imageFile);
-      // 3. Atomic RPC: создаёт локацию + теги + связи
+
+      // 3. Вызов RPC для создания локации вместе с тегами
       const { data, error } = await supabase.rpc(
         'create_location_with_tags',
         {
-          p_user_id:     user_id,
+          p_user_id:     userId,
           p_title:       rest.title,
           p_description: rest.description,
           p_address:     rest.address,
@@ -1241,6 +1432,10 @@ export function useAddLocation() {
     onSuccess: () => {
       queryClient.invalidateQueries(['locations']);
       queryClient.invalidateQueries(['tags']);
+      toast.success('Локация успешно добавлена');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Ошибка при добавлении локации');
     },
   });
 }
@@ -1317,6 +1512,149 @@ export function useLocations() {
 ```
 
 ---
+### useUpdateLocation
+
+* **Назначение:** Мутация для обновления существующей локации.
+* **Функционал:**
+  * `useMutation(({ id, ...patch }) => PATCH /rest/v1/locations?id=eq.{id}).`
+  * При обновлении тегов вызывает RPC `update_location_with_tags`.
+  * Инвалидирует `['location', id]` и `['locations']`. 
+* **Использование:** Кнопка `Сохранить` в `LocationForm` (режим Edit) и `EditButton` на детальной странице.
+**Актаульный код useUpdateLocation:**
+```js
+'use client';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import uploadImage from '@/lib/uploadImage';
+import deleteImage from '@/lib/deleteImage';
+/**
+ * Мутация для обновления существующей локации с возможной заменой изображения.
+ * Если изображение заменено, после успешного обновления записи
+ * старый файл в Storage автоматически удаляется.
+ */
+export function useUpdateLocation() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+
+  return useMutation({
+    mutationFn: async ({ id, data }) => {
+      if (!userId) {
+        throw new Error('Пользователь не авторизован');
+      }
+
+      const { imageFile, imgUrl: oldImageUrl, tags, ...rest } = data;
+      /* 1. Нормализуем список тегов */
+      const tagList = Array.isArray(tags)
+        ? tags
+        : typeof tags === 'string' && tags.trim()
+        ? tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : [];
+      /* 2. Загружаем новое изображение (если передан File) */
+      let publicUrl = oldImageUrl;
+      const isImageReplaced = Boolean(imageFile);
+      if (isImageReplaced) {
+        try {
+          publicUrl = await uploadImage(imageFile, userId);
+        } catch (err) {
+          toast.error('Не удалось загрузить новое изображение');
+          throw err;
+        }
+      }
+      /* 3. RPC‑обновление локации и тегов */
+      const { data: updated, error } = await supabase.rpc(
+        'update_location_with_tags',
+        {
+          p_loc_id:      id,
+          p_title:       rest.title,
+          p_description: rest.description,
+          p_address:     rest.address,
+          p_cost:        rest.cost,
+          p_source_url:  rest.sourceUrl,
+          p_image_url:   publicUrl,
+          p_tags:        tagList,
+        }
+      );
+      if (error) throw error;
+      /* 4. Удаляем старый файл после успешного апдейта */
+      if (isImageReplaced && oldImageUrl && oldImageUrl !== publicUrl) {
+        // Не блокируем основную цепочку — ошибка удаления не критична
+        deleteImage(oldImageUrl);
+      }
+
+      return updated;
+    },
+
+    onSuccess: (_data, { id }) => {
+      queryClient.invalidateQueries(['location', id]);
+      queryClient.invalidateQueries(['locations']);
+      toast.success('Локация успешно обновлена');
+    },
+
+    onError: (err) => {
+      toast.error(err.message || 'Ошибка при обновлении локации');
+    },
+  });
+}
+```
+
+---
+### useOneLocation.js
+
+* **Назначение:** Кастомный хук для загрузки одной локации по `id` вместе с привязанными тегами и признаком «избранное» для текущего пользователя.
+* **Функционал:** 
+  * Оборачивает `useQuery(['location', id], fetcher`, `{ staleTime: 60_000 }).`
+  * fetcher делает запрос к Supabase REST:
+  `GET /rest/v1/locations?id=eq.{id}&select=*,tags(*),favourites(user_id)&limit=1.`
+  * В респонсе вычисляет `isFavourite = favourites.length > 0.`
+  * При ошибке — выводит `toast` через `react-hot-toast`.
+* **Использование:** Применяется в `LocationDetailPage`, `LocationForm` (режим Edit) и в модалке быстрого предпросмотра.
+**Актаульный код useOneLocation.js:**
+```js
+'use client';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+
+/**
+ * useOneLocation — грузит деталь локации + теги (+ признак избранного).
+ * @param id UUID локации
+ */
+export function useOneLocation(id) {
+  return useQuery({
+    queryKey: ['location', id],
+    enabled: !!id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      /* 1. REST‑join locations ← locations_tags ← tags */
+      const { data, error } = await supabase
+        .from('locations')
+        .select(
+          '*, locations_tags(tag_id, tags(name)), favourites!left(user_id)'
+        )                      // favourites нужен, чтобы вычислить isFavourite
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+
+      return {
+        ...data,
+        imgUrl: data.image_url,            // camelCase на фронте :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+        tags: data.locations_tags.map((lt) => lt.tags.name),
+        isFavourite: data.favourites?.length > 0,
+      };
+    },
+    onError: (err) =>
+      toast.error(
+        err?.message || 'Не удалось загрузить информацию о локации'
+      ),
+  });
+}
+```
+
+---
 ### Глобальное состояние (Zustand и Context)
 
 * **Zustand Store:** Управляет локальным UI-состоянием, не относящимся к серверу. Например:
@@ -1367,9 +1705,7 @@ export const useUIStore = create(
 ### reactQuery.js
 
 * **Назначение:** Создаёт стандартизированный `QueryClient` c настройками кеша и ретраев, согласованными с документацией.&#x20;
-* **Пропсы:** Не применимо (utility‑функция).
 * **Взаимодействие:** Вызывается однократно в `Providers.js`; остальные хуки (`useLocations`, `useAddLocation` и др.) используют тот же экземпляр.
-* **Используемые библиотеки:** `@tanstack/react-query`.
 **Актаульный код reactQuery.js:**
 ```js
 import { QueryClient } from '@tanstack/react-query';
@@ -1396,9 +1732,7 @@ export function createQueryClient() {
 ### supabaseClient.js
 
 * **Назначение:** Инициализирует и экспортирует экземпляр Supabase JS SDK с `anon`‑ключом и URL из env‑переменных.&#x20;
-* **Пропсы:** —
 * **Взаимодействие:** Используется в API‑роуте `route.js`, пользовательских хуках (CRUD) и загрузке изображений в Storage.
-* **Используемые библиотеки:** `@supabase/supabase-js`.
 **Актаульный код supabaseClient.js:**
 ```js
 import { createClient } from '@supabase/supabase-js';
@@ -1415,10 +1749,8 @@ export const supabase = createClient(
 ---
 ### utils.js
 
-* **Назначение:** Объединяет условные классы с помощью `clsx`, а затем «склеивает» возможные дубликаты через `tailwind-merge`.&#x20;
-* **Пропсы:** —
+* **Назначение:** Объединяет условные классы с помощью `clsx`, а затем «склеивает» возможные дубликаты через `tailwind-merge`.
 * **Взаимодействие:** Импортируется во всех React‑компонентах, где нужно динамически формировать className.
-* **Используемые библиотеки:** `clsx`, `tailwind-merge`.
 **Актаульный код utils.js:**
 ```js
 import { clsx } from "clsx";
@@ -1430,6 +1762,108 @@ export function cn(...inputs) {
 ```
 
 ---
+### uploadImage.js
+
+**Назначение:** Компонент `uploadImage` предназначен для приёма файлов (изображений или любых других типов), их безопасной загрузки в хранилище Supabase Storage и предоставления клиенту публичного URL для последующего отображения или использования. Он инкапсулирует логику валидации, генерации уникального имени, формирования «чистого» пути на основе userId и получения конечной ссылки, скрывая детали работы с Supabase от остальной части приложения.
+**Актаульный код uploadImage.js:**
+```js
+import { supabase } from '@/lib/supabaseClient';
+/**
+ * Загружает файл в Supabase Storage и возвращает публичный URL.
+ * @param {File} file - файл для загрузки
+ * @param {string} userId - ID текущего пользователя, будет использован в пути хранения
+ * @returns {Promise<string>} публичный URL загруженного файла
+ */
+export default async function uploadImage(file, userId) {
+  if (!file) {
+    throw new Error('No file provided for upload');
+  }
+  const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
+  if (!bucket) {
+    throw new Error('Bucket name is not defined in environment variables');
+  }
+  // Генерируем «чистый» идентификатор папки: только латиница, цифры, "-" и "_"
+  const safeUserId = (userId || 'anon')
+    .toString()
+    .replace(/[^A-Za-z0-9_-]/g, '_');
+  // Расширение и уникальное имя файла
+  const ext = file.name.split('.').pop();
+  const timestamp = Date.now();
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  const fileName = `${timestamp}-${randomStr}.${ext}`;
+  // Конечный путь в хранилище
+  const filePath = `${safeUserId}/${fileName}`;
+  // Загрузка файла
+  const { error: uploadError } = await supabase.storage
+    .from(bucket)
+    .upload(filePath, file, { upsert: false });
+  if (uploadError) {
+    throw uploadError;
+  }
+  // Получение публичного URL
+  const { data: urlData, error: urlError } = supabase.storage
+    .from(bucket)
+    .getPublicUrl(filePath);
+  if (urlError) {
+    throw urlError;
+  }
+
+  return urlData.publicUrl;
+}
+```
+
+---
+### deleteImage
+
+* **Назначение:** Обеспечить корректное удаление ранее загруженного в Supabase Storage файла (изображения) по его публичному URL Предотвратить утечки устаревших или ненужных файлов, не нарушая основного потока выполнения
+### Взаимодействие
+1. **Проверка URL**
+   * Если `imageUrl` пустой (`null`, `undefined` или пустая строка) — функция сразу возвращает `void`.
+2. **Получение имени бакета**
+   * Читает переменную окружения `NEXT_PUBLIC_SUPABASE_BUCKET`.
+   * Если она не задана — выводит ошибку в `console.error` и завершает работу.
+3. **Извлечение пути файла**
+   * Ищет в `imageUrl` маркер `/${bucket}/`.
+   * Если маркер не найден — выводит предупреждение в `console.warn` и завершает работу.
+   * Извлекает часть строки после маркера — это путь внутри бакета.
+4. **Удаление файла**
+   * Вызывает `supabase.storage.from(bucket).remove([filePath])`.
+   * Если Supabase вернул ошибку — выводит её в `console.error`, но не выбрасывает исключение.
+**Актаульный код uploadImage.js:**
+```js
+import { supabase } from '@/lib/supabaseClient';
+/**
+ * Удаляет файл из Supabase Storage по его публичному URL.
+ * Ошибка удаления не прерывает основной поток, но выводится в console.
+ *
+ * @param {string|null|undefined} imageUrl – публичный URL старого изображения
+ * @returns {Promise<void>}
+ */
+export default async function deleteImage(imageUrl) {
+  if (!imageUrl) return;
+
+  const bucket = process.env.NEXT_PUBLIC_SUPABASE_BUCKET;
+  if (!bucket) {
+    console.error('ENV NEXT_PUBLIC_SUPABASE_BUCKET not defined – skip delete.');
+    return;
+  }
+  // Ищем часть пути после …/object/public/{bucket}/
+  const marker = `/${bucket}/`;
+  const idx = imageUrl.indexOf(marker);
+  if (idx === -1) {
+    console.warn('deleteImage: cannot parse path from url', imageUrl);
+    return;
+  }
+  const filePath = imageUrl.slice(idx + marker.length);
+
+  const { error } = await supabase.storage.from(bucket).remove([filePath]);
+  if (error) {
+    console.error('deleteImage: failed to remove old image', error);
+  }
+}
+```
+
+---
 ### useTags
 
 * **Назначение:** Хук для получения и кеширования списка тегов.
@@ -1437,7 +1871,7 @@ export function cn(...inputs) {
   * `useQuery(['tags'], () => GET /rest/v1/tags?select=*)`, `{ staleTime: 5*60_000 }`.
   * Возвращает массив тегов, доступный для фильтрации и автодополнения в формах.
 * **Использование:** `SearchBar` (фильтр), `LocationForm` (multi‑select теги), а также страницы аналитики.
-**Актаульный код useTags:**
+**Актаульный код useTags.js:**
 ```js
 "use client";
 import { useQuery } from "@tanstack/react-query";

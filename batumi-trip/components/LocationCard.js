@@ -10,16 +10,17 @@ import { cn } from "@/lib/utils";
 
 const LocationCard = ({ location }) => {
   const { id, title, description, imgUrl, tags = [], isFavourite } = location;
-
-  // текущее состояние фильтра  
   const selectedTags = useUIStore((s) => s.selectedTags);
-
-  // карточка видна, только если содержит ВСЕ выбранные теги
   const matchesFilter =
     selectedTags.length === 0 ||
     selectedTags.every((tag) => tags.includes(tag));
 
-  if (!matchesFilter) return null;           // << ключевая строка
+  if (!matchesFilter) return null;
+
+  // Фолбэк для некорректных URL
+  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
+    ? imgUrl
+    : "https://cataas.com/cat/gif";
 
   return (
     <motion.div
@@ -29,7 +30,7 @@ const LocationCard = ({ location }) => {
     >
       <Link href={`/locations/${id}`}>
         <Image
-          src={imgUrl || "https://cataas.com/cat/gif"}
+          src={imageSrc}
           alt={title}
           width={400}
           height={240}
@@ -40,14 +41,11 @@ const LocationCard = ({ location }) => {
           {description}
         </p>
       </Link>
-
-      {/* теги — теперь без пропа onClick, TagBadge управляет фильтром сам */}
       <div className="mt-3 flex flex-wrap gap-2">
         {tags.map((tag) => (
           <TagBadge key={tag} name={tag} />
         ))}
       </div>
-
       <div
         className={cn(
           "absolute top-4 right-4 rounded-full p-2 shadow",
@@ -62,5 +60,4 @@ const LocationCard = ({ location }) => {
     </motion.div>
   );
 };
-
 export default memo(LocationCard);

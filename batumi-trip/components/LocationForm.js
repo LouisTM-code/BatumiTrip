@@ -1,6 +1,4 @@
-// components/LocationForm.js
 'use client';
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
@@ -9,15 +7,18 @@ import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
 import AttachImage from './AttachImage';
 import { useAddLocation } from '@/hooks/useAddLocation';
+import { useUpdateLocation } from '@/hooks/useUpdateLocation';
 import { useRouter } from 'next/navigation';
 
 /**
- * Форма добавления/редактирования локации.
- * Теперь использует ChooseTag для работы с массивом тегов.
+ * Форма создания или редактирования локации.
+ * Если передан initialData.id — режим редактирования, иначе — создания.
  */
-export default function LocationForm({ initialData } = {}) {
+export default function LocationForm({ initialData = {}, onSuccess }) {
   const router = useRouter();
   const addLocation = useAddLocation();
+  const updateLocation = useUpdateLocation();
+  const isEditMode = Boolean(initialData.id);
 
   const {
     control,
@@ -26,22 +27,49 @@ export default function LocationForm({ initialData } = {}) {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      ...initialData,
-      tags: initialData?.tags || [],     // обязательно задаём tags: [] по-умолчанию
+      title:       initialData.title       || '',
+      description: initialData.description || '',
+      address:     initialData.address     || '',
+      cost:        initialData.cost        || '',
+      sourceUrl:   initialData.sourceUrl   || '',
+      tags:        initialData.tags        || [],
+      imageFile:   null,
     },
   });
 
   const onSubmit = (data) => {
-    addLocation.mutate(data, {
-      onSuccess: (location) => {
-        console.log('send');
-      },
-    });
+    // Собираем payload с file и старым imgUrl
+    const payload = {
+      title:       data.title,
+      description: data.description,
+      address:     data.address,
+      cost:        data.cost,
+      sourceUrl:   data.sourceUrl,
+      imageFile:   data.imageFile,
+      imgUrl:      initialData.imgUrl   || null,
+      tags:        data.tags,
+    };
+
+    if (isEditMode) {
+      updateLocation.mutate(
+        { id: initialData.id, data: payload },
+        { onSuccess: () => onSuccess?.() }
+      );
+    } else {
+      addLocation.mutate(
+        payload,
+        { onSuccess: (loc) => router.push(`/locations/${loc.id}`) }
+      );
+    }
   };
+
+  const isSubmitting = isEditMode
+    ? updateLocation.isLoading
+    : addLocation.isLoading;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Заголовок, описание, адрес и т.д. */}
+      {/* Заголовок */}
       <div>
         <label htmlFor="title" className="block text-sm font-medium">
           Заголовок
@@ -58,6 +86,7 @@ export default function LocationForm({ initialData } = {}) {
         )}
       </div>
 
+      {/* Описание */}
       <div>
         <label htmlFor="description" className="block text-sm font-medium">
           Описание
@@ -70,6 +99,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Адрес */}
       <div>
         <label htmlFor="address" className="block text-sm font-medium">
           Адрес
@@ -81,6 +111,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Стоимость */}
       <div>
         <label htmlFor="cost" className="block text-sm font-medium">
           Стоимость
@@ -93,6 +124,7 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
+      {/* Ссылка на источник */}
       <div>
         <label htmlFor="sourceUrl" className="block text-sm font-medium">
           Ссылка на источник
@@ -104,20 +136,27 @@ export default function LocationForm({ initialData } = {}) {
         />
       </div>
 
-      {/* Блок выбора/добавления тегов */}
+      {/* Выбор тегов */}
       <div>
         <label className="block text-sm font-medium">Теги</label>
         <ChooseTag control={control} name="tags" />
       </div>
 
-      {/* Загрузка изображения */}
+      {/* Картинка */}
       <div>
         <label className="block text-sm font-medium">Изображение</label>
         <AttachImage control={control} name="imageFile" className="mt-1" />
       </div>
 
-      <Button type="submit" disabled={addLocation.isLoading}>
-        {addLocation.isLoading ? 'Сохраняем…' : 'Сохранить'}
+      {/* Кнопка */}
+      <Button type="submit" disabled={isSubmitting}>
+        {isEditMode
+          ? isSubmitting
+            ? 'Сохраняем…'
+            : 'Сохранить изменения'
+          : isSubmitting
+          ? 'Сохраняем…'
+          : 'Сохранить'}
       </Button>
     </form>
   );

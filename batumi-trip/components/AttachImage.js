@@ -1,10 +1,10 @@
-// components/AttachImage.js
 'use client';
 import React, { useEffect, useRef, useState } from "react";
 import { useController } from "react-hook-form";
 import { Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Обновлённый AttachImage: сохраняем один File вместо FileList
 export default function AttachImage({ control, name = "imageFile", rules, className }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null);
@@ -14,13 +14,14 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
     fieldState: { error },
   } = useController({ control, name, rules });
 
-  // передаём весь FileList, а не один файл
+  // Сохраняем один File, а не FileList
   const handleSelect = (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    onChange(files);                            // <-- FileList
-    const url = URL.createObjectURL(files[0]);
+    const file = files[0];
+    onChange(file);
+    const url = URL.createObjectURL(file);
     setPreview(url);
   };
 
@@ -31,7 +32,12 @@ export default function AttachImage({ control, name = "imageFile", rules, classN
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
+  // Очищаем preview при unmount
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   return (
     <div className={cn("space-y-2", className)}>
