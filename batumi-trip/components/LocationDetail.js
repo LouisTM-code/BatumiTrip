@@ -1,6 +1,6 @@
+// components/LocationDetail.jsx
 'use client';
 import Image from 'next/image';
-import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
@@ -13,7 +13,6 @@ import { useRouter } from 'next/navigation';
 export default function LocationDetail({ location }) {
   const router = useRouter();
   const {
-    id,
     title,
     description,
     imgUrl,
@@ -26,7 +25,7 @@ export default function LocationDetail({ location }) {
   // Фолбэк для некорректных URL
   const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
     ? imgUrl
-    : "https://cataas.com/cat/gif";
+    : 'https://cataas.com/cat/gif';
 
   return (
     <motion.article
@@ -51,9 +50,7 @@ export default function LocationDetail({ location }) {
           <p>
             <strong>Адрес:&nbsp;</strong>
             <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(
-                address
-              )}`}
+              href={`https://www.google.com/maps/search/${encodeURIComponent(address)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline"
@@ -98,9 +95,6 @@ export default function LocationDetail({ location }) {
       <div className="flex gap-2">
         <Button variant="secondary" onClick={() => router.push(`/`)}>
           Назад
-        </Button>
-        <Button variant="destructive" onClick={() => {/* TODO: реализовать удаление */}}>
-          Удалить
         </Button>
       </div>
     </motion.article>

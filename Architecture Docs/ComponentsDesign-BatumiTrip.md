@@ -26,16 +26,6 @@
 ---
 ## Пользовательские хуки и глобальное состояние
 
-### useDeleteLocation
-
-* **Назначение:** Мутация для удаления локации.
-* **Функционал:**
-  * `useMutation(id => DELETE /rest/v1/locations?id=eq.{id})`.
-  * Удаляет связанные избранные: `DELETE /rest/v1/favourites?location_id=eq.{id}`.
-  * Инвалидирует `['locations']`, `['favourites', userId]` и очищает `favorites` в Zustand.
-* **Использование:** `DeleteButton` на `LocationDetailPage`; после успеха выполняет `router.push('/')`.
-**Актаульный код useDeleteLocation:** *Ещё не рализован*
-
 ### useToggleFavourite
 
 * **Назначение:** Мутация‑переключатель «добавить / удалить в избранное» для текущего пользователя.

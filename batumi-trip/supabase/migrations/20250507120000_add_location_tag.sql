@@ -128,3 +128,25 @@ begin
   return loc;
 end;
 $$;
+
+-- delete_location
+-- RPC-функция для удаления локации и всех её связей в locations_tags
+CREATE OR REPLACE FUNCTION public.delete_location(
+  location_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Явно удаляем все связи в locations_tags
+  DELETE FROM public.locations_tags
+    WHERE location_id = $1;
+
+  -- Удаляем саму локацию; благодаря ON DELETE CASCADE
+  -- в locations_tags всё подчистится автоматически, но
+  -- на всякий случай мы сделали шаг 1
+  DELETE FROM public.locations
+    WHERE id = $1;
+END;
+$$;

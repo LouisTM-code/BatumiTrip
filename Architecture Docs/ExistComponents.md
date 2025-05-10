@@ -83,13 +83,13 @@ export default function AddLocationPage() {
 ```js
 // app/locations/[id]/page.jsx
 'use client';
-
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';                                      // useAuth.js восстанавливает сессию из cookie и возвращает { user, isLoading } :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+import { useAuth } from '@/hooks/useAuth';
 import { useOneLocation } from '@/hooks/useOneLocation';
+import { useDeleteLocation } from '@/hooks/useDeleteLocation';
 import LocationDetail from '@/components/LocationDetail';
-import LocationForm from '@/components/LocationForm';                             // Форму для редактирования/добавления локации :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+import LocationForm from '@/components/LocationForm';
 import SkeletonCard from '@/components/SkeletonCard';
 import { Button } from '@/components/ui/button';
 
@@ -99,7 +99,8 @@ export default function LocationDetailPage() {
   const { data: location, isLoading, isError } = useOneLocation(id);
   const [isEditing, setIsEditing] = useState(false);
   const router = useRouter();
-
+  // хук удаления
+  const deleteMutation = useDeleteLocation();
   // пока идёт загрузка данных или авторизации — показываем скелетон
   if (isLoading || authLoading) {
     return (
@@ -116,9 +117,20 @@ export default function LocationDetailPage() {
       </main>
     );
   }
-
-  // только автор (location.user_id) может редактировать
+  // только автор (location.user_id) может редактировать / удалять
   const canEdit = user?.id === location.user_id;
+  // удаление с подтверждением
+  const handleDelete = () => {
+    if (!window.confirm('Удалить локацию безвозвратно?')) return;
+    deleteMutation.mutate(
+      { id, imageUrl: location.imgUrl },
+      {
+        onSuccess: () => {
+          router.push('/');
+        },
+      },
+    );
+  };
 
   return (
     <main className="container mx-auto px-4 py-6 space-y-6">
@@ -126,20 +138,28 @@ export default function LocationDetailPage() {
       {!isEditing ? (
         <>
           <LocationDetail location={location} />
-
-          {/* 1+2. Кнопка «Редактировать» здесь, и только если canEdit */}
+          {/* 1+2. Кнопки «Редактировать» и «Удалить» доступны только автору */}
           {canEdit && (
-            <Button variant="secondary" onClick={() => setIsEditing(true)}>
-              Редактировать
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" onClick={() => setIsEditing(true)}>
+                Редактировать
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteMutation.isLoading}
+              >
+                {deleteMutation.isLoading ? 'Удаляем…' : 'Удалить'}
+              </Button>
+            </div>
           )}
         </>
       ) : (
         <>
           <h1 className="text-2xl font-bold">Редактировать локацию</h1>
-          <LocationForm 
-            initialData={location} 
-            onSuccess={ () => {
+          <LocationForm
+            initialData={location}
+            onSuccess={() => {
               setIsEditing(false);
             }}
           />
@@ -717,7 +737,6 @@ export default memo(LocationCard);
 ```js
 'use client';
 import Image from 'next/image';
-import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
@@ -730,7 +749,6 @@ import { useRouter } from 'next/navigation';
 export default function LocationDetail({ location }) {
   const router = useRouter();
   const {
-    id,
     title,
     description,
     imgUrl,
@@ -743,7 +761,7 @@ export default function LocationDetail({ location }) {
   // Фолбэк для некорректных URL
   const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
     ? imgUrl
-    : "https://cataas.com/cat/gif";
+    : 'https://cataas.com/cat/gif';
 
   return (
     <motion.article
@@ -768,9 +786,7 @@ export default function LocationDetail({ location }) {
           <p>
             <strong>Адрес:&nbsp;</strong>
             <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(
-                address
-              )}`}
+              href={`https://www.google.com/maps/search/${encodeURIComponent(address)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary underline"
@@ -815,9 +831,6 @@ export default function LocationDetail({ location }) {
       <div className="flex gap-2">
         <Button variant="secondary" onClick={() => router.push(`/`)}>
           Назад
-        </Button>
-        <Button variant="destructive" onClick={() => {/* TODO: реализовать удаление */}}>
-          Удалить
         </Button>
       </div>
     </motion.article>
@@ -1599,6 +1612,87 @@ export function useUpdateLocation() {
 
     onError: (err) => {
       toast.error(err.message || 'Ошибка при обновлении локации');
+    },
+  });
+}
+```
+
+---
+### useDeleteLocation
+
+* **Назначение:** Удалить локацию из базы через RPC‑функцию `delete_location`. Удалить все связи локации в таблицах `favourites` и `locations_tags`. Удалить файл изображения из хранилища (если был). Обновить клиентский кэш React‑Query и состояние UI
+* **Функционал:**
+1. **RPC‑удаление локации**
+   Вызывает на Supabase функцию `delete_location`, которая каскадно удаляет запись из `locations` и все связанные через внешние ключи записи в `locations_tags`.
+2. **Удаление избранного**
+   Удаляет из таблицы `favourites` все записи, где `location_id` совпадает с удаляемой локацией. Ошибки при этом только логируются, но не прерывают процесс.
+3. **Удаление изображения**
+   Если передан URL картинки, вызывает утилиту `deleteImage` для удаления файла из Storage. Ошибки также только логируются.
+4. **Инвалидация кэшей**
+   * Инвалидирует React‑Query-запросы `["locations"]` и `["favourites"]`, чтобы список локаций и избранного обновился.
+   * С помощью zustand‑стора сбрасывает флаг избранного для этой локации в UI.
+5. **Обработка ошибок**
+   В случае ошибки RPC или других критичных шагов бросает исключение и показывает toast‑сообщение с текстом ошибки.
+**Актаульный код useDeleteLocation.js:**
+```js
+"use client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
+import deleteImage from "@/lib/deleteImage";
+import toast from "react-hot-toast";
+import { useUIStore } from "@/store/uiStore";
+/**
+ * useDeleteLocation — удаляет локацию через RPC‑функцию `delete_location`,
+ * чистит связанные записи из favourites, locations_tags и файл в Storage.
+ * После успеха должен быть вызван `router.push('/')` на уровне компонента,
+ * где используется этот хук (см. LocationDetailPage).
+ *
+ * Возвращает объект `mutation` из React‑Query.
+ */
+export function useDeleteLocation() {
+  const queryClient = useQueryClient();
+  const clearFavourite = useUIStore((s) => s.toggleFavourite);
+
+  return useMutation({
+    /**
+     * @param {{ id: string, imageUrl?: string|null }} payload
+     */
+    mutationFn: async ({ id, imageUrl }) => {
+      // 1) Удаляем запись + связки тегов каскадом через RPC
+      const { error: rpcError } = await supabase.rpc("delete_location", {
+        location_id: id,
+      });
+      if (rpcError) throw rpcError;
+      // 2) Удаляем favourites текущего пользователя к этой локации (без RPC)
+      const { error: favErr } = await supabase
+        .from("favourites")
+        .delete()
+        .eq("location_id", id);
+      if (favErr) {
+        // не критично — просто логируем
+        console.warn("Failed to delete favourites for location", favErr);
+      }
+      // 3) Удаляем картинку из Storage, если была
+      try {
+        if (imageUrl) await deleteImage(imageUrl);
+      } catch (imgErr) {
+        console.warn("Failed to delete image file:", imgErr);
+      }
+
+      return { id };
+    },
+    // ====== React‑Query callbacks ======
+    onSuccess: (_data, { id }) => {
+      /* Инвалидируем кеши списка локаций / избранного */
+      queryClient.invalidateQueries(["locations"]);
+      queryClient.invalidateQueries({ queryKey: ["favourites"] });
+      // Сбрасываем флаг избранного локально, если был
+      clearFavourite(id);
+      toast.success("Локация удалена");
+    },
+
+    onError: (err) => {
+      toast.error(err?.message || "Не удалось удалить локацию");
     },
   });
 }
