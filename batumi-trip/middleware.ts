@@ -32,5 +32,5 @@ export async function middleware(req: NextRequest) {
 
 // Применять middleware только к приватным страницам `/locations/*`
 export const config = {
-  matcher: ['/locations/:path*'],
+  matcher: ['/locations/new'],
 };
