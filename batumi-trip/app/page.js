@@ -3,6 +3,7 @@ import LocationList from '@/components/LocationList';
 import AddLocationButton from '@/components/AddLocationButton'
 import Header from '@/components/Header';
 import TagsPrefetcher from '@/lib/TagsPrefetcher';
+import FavouriteFilterButton from '@/components/FavouriteFilterButton';
 
 export default function LocationListPage() {
   return (
@@ -11,6 +12,7 @@ export default function LocationListPage() {
       <Header />
       <LocationList />
       <AddLocationButton />
+      <FavouriteFilterButton />
     </main>
   );
 }

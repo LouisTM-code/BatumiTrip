@@ -108,6 +108,7 @@ import LocationList from '@/components/LocationList';
 import AddLocationButton from '@/components/AddLocationButton'
 import Header from '@/components/Header';
 import TagsPrefetcher from '@/lib/TagsPrefetcher';
+import FavouriteFilterButton from '@/components/FavouriteFilterButton';
 
 export default function LocationListPage() {
   return (
@@ -116,6 +117,7 @@ export default function LocationListPage() {
       <Header />
       <LocationList />
       <AddLocationButton />
+      <FavouriteFilterButton />
     </main>
   );
 }
@@ -246,7 +248,7 @@ export default function LocationDetailPage() {
 
 * **Назначение:** Навигационная панель (обычно шапка страницы) с названием приложения и кнопкой авторизации/выхода.
 * **Взаимодействие:** Показывает название или логотип приложения. Если пользователь не авторизован, отображает кнопку "Войти". Нажатие на кнопку "Войти" открывает `LoginModal` (контролируется глобальным состоянием, например Zustand). Если пользователь авторизован, может показывать приветствие и кнопку "Выйти", вызывающую функцию `signOut()` из `useAuth`.
-**Актаульный код Header:**
+**Актаульный код Header.js:**
 ```js
 "use client";
 import { useState } from "react";
@@ -354,7 +356,7 @@ export default function Header({ className }) {
 
 * **Назначение:** Поле поиска по заголовкам
 * **Взаимодействие:** Пользователь вводит текст, он сохраняется в глобальном состоянии (например, Zustand) как текущий поисковый запрос (`searchQuery`). Поисковое состояние используют `useLocations` или компонент списка для фильтрации вывода. Возможна функциональность debounce (задержка поиска после ввода) для оптимизации запросов.
-**Актаульный код SearchBar:**
+**Актаульный код SearchBar.js:**
 ```js
 "use client";
 import { useState, useEffect } from "react";
@@ -449,25 +451,87 @@ export default function SearchBar({
 
 * **Назначение:** Кнопка для перехода к форме создания новой локации.
 * **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
-**Актаульный код AddLocationButton:**
+**Актаульный код AddLocationButton.js:**
 ```js
-'use client';
-import Link from 'next/link';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+"use client";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+/**
+ * Плавающая кнопка «Добавить локацию».
+ * • фиксирована в правом нижнем углу на всех брейкпоинтах;
+ * • скрыта для неавторизованных посетителей.
+ */
+export default function AddLocationButton({ className = "" }) {
+  const { user } = useAuth();
+  if (!user) return null;
 
-export default function AddLocationButton({ className = '' }) {
   return (
     <Button
       asChild
-      className={`fixed bottom-4 right-4 sm:static flex items-center gap-2 ${className}`}
+      className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
       <Link href="/locations/new">
         <Plus className="w-4 h-4" aria-hidden="true" />
-        <span className="sr-only sm:not-sr-only">Добавить локацию</span>
+        <span className="sr-only md:not-sr-only">Добавить локацию</span>
       </Link>
     </Button>
+  );
+}
+```
+
+---
+### FavouriteFilterButton
+
+* **Назначение:** Кнопка для фильтрации `LocationList`по избранному.
+* **Взаимодействие:** На главной странице располагается снизу слева. При нажатии переводит обновляет `uiStore`. Dсегда видимый при прокрутке страницы (fixed position).
+**Актаульный код FavouriteFilterButton.js:**
+```js
+'use client';
+import { Star } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+import { cn } from '@/lib/utils';
+
+export default function FavouriteFilterButton({ className = '' }) {
+  // 1) хуки всегда на самом верху
+  const { user } = useAuth();
+  const showOnlyFavourites = useUIStore((s) => s.showOnlyFavourites);
+  const toggle = useUIStore((s) => s.toggleShowOnlyFavourites);
+  // 2) только после этого — ранний return для неавторизованных
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+      className={cn('fixed bottom-4 left-4 z-50', className)}
+    >
+      <Button
+        variant={showOnlyFavourites ? 'secondary' : 'outline'}
+        size="icon"
+        aria-label={
+          showOnlyFavourites
+            ? 'Показать все локации'
+            : 'Показать только избранные'
+        }
+        onClick={toggle}
+        className="rounded-full shadow-lg"
+      >
+        <Star
+          className="h-5 w-5"
+          stroke="currentColor"
+          fill={showOnlyFavourites ? 'currentColor' : 'none'}
+        />
+      </Button>
+    </motion.div>
   );
 }
 ```
@@ -819,16 +883,17 @@ export default function LoginModal() {
   – если было, DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}. Хук оптимистично обновляет favourites в Zustand и invalidates ['favourites', userId].
 **Актаульный код LocationCard:**:
 ```js
-'use client';
-import React, { memo } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { Star } from 'lucide-react';
-import { motion } from 'framer-motion';
-import TagBadge from '@/components/TagBadge';
-import { useUIStore } from '@/store/uiStore';
-import { cn } from '@/lib/utils';
-import { useToggleFavourite } from '@/hooks/useToggleFavourite';
+"use client";
+import React, { memo } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { Star } from "lucide-react";
+import { motion } from "framer-motion";
+import TagBadge from "@/components/TagBadge";
+import { useUIStore } from "@/store/uiStore";
+import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
+import { useToggleFavourite } from "@/hooks/useToggleFavourite";
 
 const LocationCard = ({ location }) => {
   const {
@@ -837,26 +902,29 @@ const LocationCard = ({ location }) => {
     description,
     imgUrl,
     tags = [],
-    /* isFavourite из запроса может быть устаревшим — локальный store главнее */
     isFavourite: initialFavourite = false,
   } = location;
-
+  /* ---------- глобальный UI‑state ---------- */
   const selectedTags = useUIStore((s) => s.selectedTags);
   const favouritesMap = useUIStore((s) => s.favourites);
+  const showOnlyFavourites = useUIStore((s) => s.showOnlyFavourites);
   const isFavourite = favouritesMap[id] ?? initialFavourite;
-
+  /* ---------- auth ---------- */
+  const { user } = useAuth();
+  /* тег‑фильтр + фильтр «только избранное» */
   const matchesFilter =
-    selectedTags.length === 0 ||
-    selectedTags.every((tag) => tags.includes(tag));
-
+    (!showOnlyFavourites || isFavourite) &&
+    (selectedTags.length === 0 ||
+      selectedTags.every((tag) => tags.includes(tag)));
+  /* ---------- обработчик избранного ---------- */
   const toggleFavourite = useToggleFavourite(id);
-
-  if (!matchesFilter) return null;
-  // Фолбэк на случай пустого/невалидного URL
+  /* fallback‑изображение */
   const imageSrc =
     imgUrl && /^https?:\/\//.test(imgUrl)
       ? imgUrl
-      : 'https://cataas.com/cat/gif';
+      : "https://cataas.com/cat/gif";
+
+  if (!matchesFilter) return null;
 
   return (
     <motion.div
@@ -878,35 +946,36 @@ const LocationCard = ({ location }) => {
         </p>
       </Link>
       {/* теги */}
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2 pb-10">
         {tags.map((tag) => (
           <TagBadge key={tag} name={tag} />
         ))}
       </div>
-      {/* интерактивная звёздочка */}
-      <button
-        type="button"
-        onClick={toggleFavourite}
-        aria-label={
-          isFavourite ? 'Убрать из избранного' : 'Добавить в избранное'
-        }
-        className={cn(
-          'absolute top-4 right-4 rounded-full p-2 shadow transition-colors focus:outline-none focus:ring-2 focus:ring-ring',
-          isFavourite
-            ? 'text-yellow-500'
-            : 'text-gray-400 hover:text-yellow-500'
-        )}
-      >
-        <Star
-          size={20}
-          stroke="currentColor"
-          fill={isFavourite ? 'currentColor' : 'none'}
-        />
-      </button>
+      {/* звезда избранного — внизу карточки, только для авторизованных */}
+      {user && (
+        <button
+          type="button"
+          onClick={toggleFavourite}
+          aria-label={
+            isFavourite ? "Убрать из избранного" : "Добавить в избранное"
+          }
+          className={cn(
+            "absolute bottom-4 right-4 rounded-full p-2 shadow transition-colors focus:outline-none focus:ring-2 focus:ring-ring",
+            isFavourite
+              ? "text-yellow-500"
+              : "text-gray-400 hover:text-yellow-500"
+          )}
+        >
+          <Star
+            size={20}
+            stroke="currentColor"
+            fill={isFavourite ? "currentColor" : "none"}
+          />
+        </button>
+      )}
     </motion.div>
   );
 };
-
 export default memo(LocationCard);
 ```
 
@@ -1953,28 +2022,43 @@ import { persist } from 'zustand/middleware';
 export const useUIStore = create(
   persist(
     (set, get) => ({
+      /* ---------- состояние ---------- */
       searchQuery: '',
       selectedTags: [],
       showLoginModal: false,
+      /** Флаг «показывать только избранное» */
+      showOnlyFavourites: false,
+      /** Map {id: boolean} локально отмеченных избранных */
       favourites: {},
-
+      /* ---------- actions ---------- */
       setSearchQuery: (q) => set({ searchQuery: q }),
+
       toggleTag: (tag) =>
         set((s) => ({
           selectedTags: s.selectedTags.includes(tag)
             ? s.selectedTags.filter((t) => t !== tag)
             : [...s.selectedTags, tag],
         })),
+
       setLoginModal: (v) => set({ showLoginModal: v }),
-
+      /** Локальный optimistic‑тоггл для одной локации */
       toggleFavourite: (id) =>
-        set((s) => ({ favourites: { ...s.favourites, [id]: !s.favourites[id] } })),
-
+        set((s) => ({
+          favourites: { ...s.favourites, [id]: !s.favourites[id] },
+        })),
+      /** Гидратация списка избранных из Supabase */
       hydrateFavourites: (ids) =>
-        set(() => ({ favourites: Object.fromEntries(ids.map((id) => [id, true])) })),
+        set(() => ({
+          favourites: Object.fromEntries(ids.map((id) => [id, true])),
+        })),
+      /** Переключатель глобального фильтра «только избранное» */
+      toggleShowOnlyFavourites: () =>
+        set((s) => ({ showOnlyFavourites: !s.showOnlyFavourites })),
     }),
     {
       name: 'batumi-ui',
+      /** В localStorage храним только actual избранные,
+          остальные UI‑флаги не нужно персистить */
       partialize: (s) => ({ favourites: s.favourites }),
     }
   )
@@ -2096,7 +2180,7 @@ export default async function uploadImage(file, userId) {
 ### deleteImage
 
 * **Назначение:** Обеспечить корректное удаление ранее загруженного в Supabase Storage файла (изображения) по его публичному URL Предотвратить утечки устаревших или ненужных файлов, не нарушая основного потока выполнения
-### Взаимодействие
+* **Взаимодействие:**
 1. **Проверка URL**
    * Если `imageUrl` пустой (`null`, `undefined` или пустая строка) — функция сразу возвращает `void`.
 2. **Получение имени бакета**
