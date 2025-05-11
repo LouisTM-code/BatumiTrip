@@ -1,58 +1,90 @@
 "use client";
-
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/store/uiStore";
+import { useTags } from "@/hooks/useTags";
+import TagBadge from "@/components/TagBadge";
 import { cn } from "@/lib/utils";
-
 /**
- * SearchBar — поле ввода для поиска локаций по заголовку и тегам.
- * Самостоятельно сохраняет текст запроса в global‑store (Zustand).
+ * SearchBar — поле ввода + список тегов‑фильтров.
  *
- * Props:
- *  @param {string} [placeholder] — текст плейсхолдера ввода (по умолчанию «Поиск локаций…»)
+ * • Данные ввода → Zustand (`searchQuery`) c debounce = 1 сек.  
+ * • Теги грузятся через useTags() и отображаются под инпутом.  
+ * • Клик по тегу переключает его в Zustand (`toggleTag` внутри TagBadge).  
+ *
+ * @param placeholder – плейсхолдер строки поиска
  */
-export default function SearchBar({ placeholder = "Поиск локаций…", className }) {
-  /* Глобальный Zustand store */
+export default function SearchBar({
+  placeholder = "Поиск локаций…",
+  className,
+}) {
+  /* ---------- глобальный поиск (Zustand) ---------- */
   const searchQuery = useUIStore((s) => s.searchQuery);
   const setSearchQuery = useUIStore((s) => s.setSearchQuery);
 
-  /* Локальное состояние ввода */
+  /* ---------- локальное состояние ввода ---------- */
   const [value, setValue] = useState(searchQuery);
-
-  /* Debounce (300 мс) перед обновлением Zustand */
   useEffect(() => {
     const id = window.setTimeout(() => {
-      // Обновляем global‑state только если строка изменилась
-      if (value !== searchQuery) {
-        setSearchQuery(value);
-      }
+      if (value !== searchQuery) setSearchQuery(value);
     }, 1000);
-
     return () => window.clearTimeout(id);
   }, [value, searchQuery, setSearchQuery]);
 
-  /* Сбрасываем локальный инпут, если глобальное состояние поменялось извне */
+  /* если глобальное состояние изменилось извне — синхронизируем input */
   useEffect(() => {
     if (searchQuery !== value) setValue(searchQuery);
   }, [searchQuery]);
+
+  /* ---------- список тегов ---------- */
+  const { data: tags = [], isLoading, isError } = useTags();
 
   return (
     <motion.div
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -8, opacity: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
-      className={cn("w-full", className)}
+      className={cn("w-full space-y-3", className)}
     >
+      {/* строка поиска */}
       <Input
         type="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         aria-label="Поле поиска локаций"
-        className="w-full" // Tailwind: растягиваем на 100 %
+        className="w-full"
       />
+
+      {/* блок тегов */}
+      <AnimatePresence initial={false}>
+        {/** оставляем тег‑бар даже когда идёт загрузка, чтобы высота была стабильна */}
+        <motion.div
+          key="tag-bar"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <div className="flex flex-wrap gap-2 pt-1">
+            {isLoading && (
+              <span className="text-sm text-muted-foreground">
+                Загружаем теги…
+              </span>
+            )}
+            {isError && (
+              <span className="text-sm text-destructive-foreground">
+                Не удалось загрузить теги
+              </span>
+            )}
+            {tags.map((tag) => (
+              <TagBadge key={tag.id} name={tag.name} />
+            ))}
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </motion.div>
   );
 }
