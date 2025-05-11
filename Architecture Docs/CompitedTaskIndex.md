@@ -338,3 +338,23 @@
 > - После подтверждения и успешного удаления: локация исчезает из БД и тегов, удаляется изображение из Storage, кеши инвалидируются, пользователь перенаправляется на главную.
 
 ---
+### S4-01 Реализация FavouriteFetcher
+| Дата       | Ответственный | Статус      |
+|------------|---------------|-------------|
+| 2025-05-11 | Vadim         | ✅ Завершено |
+
+**Выполнено:**
+1. Создан хук `FavouriteFetcher` (`hooks/FavouriteFetcher.js`):
+   - При наличии `userId` выполняет `queryClient.fetchQuery` с `queryFn`, получая из таблицы `favourites` список `location_id` для текущего пользователя.  
+   - Гидрация Zustand-стора методом `hydrateFavourites(...)` на основе полученных `location_id`.  
+   - При выходе пользователя (`userId = null`) сброс состояния избранного (`hydrateFavourites([])`) и очистка кеша React-Query (`removeQueries(['favourites'])`).  
+2. Обновлён глобальный layout (`app/layout.jsx`):
+   - Импорт и рендер `<FavouriteFetcher />` внутри провайдеров `SessionProvider` и `QueryClientProvider`.  
+3. Добавлена обработка ошибок при запросах к Supabase в `fetchQuery` (try/catch + `console.error`).  
+
+> **Acceptance Criteria:**  
+> - При входе в аккаунт из Supabase загружаются все текущие `favourites` и отражаются в UI.  
+> - При выходе пользователя состояние избранного очищается полностью.  
+> - React-Query не выбрасывает ошибок `Missing queryFn` и успешно кэширует/инвалидирует запросы по ключу `['favourites', userId]`.  
+
+---

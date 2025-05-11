@@ -1,6 +1,69 @@
 # **Справочник компонентов и хуков BatumiTrip**
 
 > Этот документ является единым источником истины (source of truth) о текущей структуре и состоянии кода проекта Batumi Trip. Он служит опорой для AI‑генератора кода и всей команды разработчиков, предоставляя детальные описания существующих компонентов, хуков и утилит. Используя этот справочник, AI сможет корректно генерировать и модифицировать код, опираясь на актуальные реализации и внутренние соглашения по стилю.
+---
+## Иерархия компонентов
+```text
+RootLayout
+├─ <html>
+│  └─ <body>
+│     ├─ Providers
+│     │  ├─ QueryClientProvider
+│     │  │  └─ ReactQueryDevtools   (только в development)
+│     │  ├─ AuthProvider
+│     │  │  └─ SessionProvider
+│     │  └─ ThemeProvider
+│     │     └─ NextThemesProvider
+│     ├─ FavouriteFetcher
+│     └─ {page children}
+│
+├─ / (LocationListPage)
+│  ├─ TagsPrefetcher
+│  ├─ Header
+│  │  ├─ Logo <Link>
+│  │  ├─ Search <button> ─┐
+│  │  │                   └─ SearchBar (открывается/закрывается)
+│  │  │                      ├─ Input
+│  │  │                      └─ TagBadge × N
+│  │  ├─ Login/Logout <Button>
+│  │  └─ LoginModal (вызывается из Zustand)
+│  ├─ LocationList
+│  │  ├─ (SkeletonCard × 6)                          – пока идёт начальная загрузка
+│  │  ├─ LocationCard × N
+│  │  │  ├─ <Image>
+│  │  │  ├─ TagBadge × M
+│  │  │  └─ Favourite <button>
+│  │  └─ Intersection‑observer <div>                 – триггер беск. прокрутки
+│  └─ AddLocationButton  → <Link href="/locations/new">
+│
+├─ /locations/new (AddLocationPage)
+│  └─ LocationForm
+│     ├─ Input (заголовок)
+│     ├─ Textarea (описание)
+│     ├─ Input (адрес, стоимость, sourceUrl)
+│     ├─ ChooseTag
+│     │  ├─ Inline <span> (существующие теги)
+│     │  └─ Input + Button (добавить новый тег)
+│     ├─ AttachImage
+│     │  ├─ <input type="file">
+│     │  └─ <img> (предпросмотр / X <button>)
+│     └─ Button (Сохранить)
+│
+├─ /locations/[id] (LocationDetailPage)
+│  │  (SkeletonCard — при загрузке)
+│  │  (Ошибка <div> — при isError)
+│  └─ {!isEditing
+│      ├─ LocationDetail
+│      │  ├─ <Image>
+│      │  ├─ TagBadge × M
+│      │  └─ Button (Назад)
+│      └─ [если автор] Edit & Delete <Button>
+│     : LocationForm (режим Edit) + Button (Отмена)
+│
+└─ API / служебные компоненты (не попадают в DOM‑дерево страниц)
+   ├─ route.js (NextAuth endpoint)
+   └─ SkeletonCard, TagBadge, etc. — вспомогательные UI‑элементы
+```
 
 ---
 ## Актуальный код и описание компонентов
@@ -13,7 +76,7 @@
 ```js
 import '@/styles/globals.css';
 import Providers from '@/components/Providers';
-
+import FavouriteFetcher from '@/lib/FavouriteFetcher';
 export const metadata = {
   title: 'Batumi Trip',
   description: 'SPA для совместного планирования путешествия друзей в Батуми',
@@ -23,7 +86,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ru" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <FavouriteFetcher />
+          {children}
+          </Providers>
       </body>
     </html>
   );
@@ -699,29 +765,44 @@ export default function LoginModal() {
   – если было, DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}. Хук оптимистично обновляет favourites в Zustand и invalidates ['favourites', userId].
 **Актаульный код LocationCard:**:
 ```js
-"use client";
-import React, { memo } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { Star } from "lucide-react";
-import { motion } from "framer-motion";
-import TagBadge from "@/components/TagBadge";
-import { useUIStore } from "@/store/uiStore";
-import { cn } from "@/lib/utils";
+'use client';
+import React, { memo } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Star } from 'lucide-react';
+import { motion } from 'framer-motion';
+import TagBadge from '@/components/TagBadge';
+import { useUIStore } from '@/store/uiStore';
+import { cn } from '@/lib/utils';
+import { useToggleFavourite } from '@/hooks/useToggleFavourite';
 
 const LocationCard = ({ location }) => {
-  const { id, title, description, imgUrl, tags = [], isFavourite } = location;
+  const {
+    id,
+    title,
+    description,
+    imgUrl,
+    tags = [],
+    /* isFavourite из запроса может быть устаревшим — локальный store главнее */
+    isFavourite: initialFavourite = false,
+  } = location;
+
   const selectedTags = useUIStore((s) => s.selectedTags);
+  const favouritesMap = useUIStore((s) => s.favourites);
+  const isFavourite = favouritesMap[id] ?? initialFavourite;
+
   const matchesFilter =
     selectedTags.length === 0 ||
     selectedTags.every((tag) => tags.includes(tag));
 
-  if (!matchesFilter) return null;
+  const toggleFavourite = useToggleFavourite(id);
 
-  // Фолбэк для некорректных URL
-  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
-    ? imgUrl
-    : "https://cataas.com/cat/gif";
+  if (!matchesFilter) return null;
+  // Фолбэк на случай пустого/невалидного URL
+  const imageSrc =
+    imgUrl && /^https?:\/\//.test(imgUrl)
+      ? imgUrl
+      : 'https://cataas.com/cat/gif';
 
   return (
     <motion.div
@@ -729,7 +810,7 @@ const LocationCard = ({ location }) => {
       whileHover={{ scale: 1.02 }}
       className="group relative rounded-2xl bg-white p-4 shadow transition-shadow"
     >
-      <Link href={`/locations/${id}`}>
+      <Link href={`/locations/${id}`} className="block">
         <Image
           src={imageSrc}
           alt={title}
@@ -742,25 +823,36 @@ const LocationCard = ({ location }) => {
           {description}
         </p>
       </Link>
+      {/* теги */}
       <div className="mt-3 flex flex-wrap gap-2">
         {tags.map((tag) => (
           <TagBadge key={tag} name={tag} />
         ))}
       </div>
-      <div
-        className={cn(
-          "absolute top-4 right-4 rounded-full p-2 shadow",
-          isFavourite && "text-yellow-500"
-        )}
+      {/* интерактивная звёздочка */}
+      <button
+        type="button"
+        onClick={toggleFavourite}
         aria-label={
-          isFavourite ? "Удалено из избранного" : "Добавлено в избранное"
+          isFavourite ? 'Убрать из избранного' : 'Добавить в избранное'
         }
+        className={cn(
+          'absolute top-4 right-4 rounded-full p-2 shadow transition-colors focus:outline-none focus:ring-2 focus:ring-ring',
+          isFavourite
+            ? 'text-yellow-500'
+            : 'text-gray-400 hover:text-yellow-500'
+        )}
       >
-        <Star size={20} />
-      </div>
+        <Star
+          size={20}
+          stroke="currentColor"
+          fill={isFavourite ? 'currentColor' : 'none'}
+        />
+      </button>
     </motion.div>
   );
 };
+
 export default memo(LocationCard);
 ```
 
@@ -2038,6 +2130,159 @@ export function useTags() {
 import { useTags } from "@/hooks/useTags";
 export default function TagsPrefetcher() {
   useTags();
+  return null;
+}
+```
+
+---
+### useToggleFavourite
+
+* **Назначение:** Мутация‑переключатель «добавить / удалить в избранное» для текущего пользователя.
+* **Функционал:**
+  * Если локация не любима → `POST /rest/v1/favourites { user_id, location_id }`.
+  * Иначе → `DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}`.
+  * Оптимистично обновляет `favorites` в Zustand (`toggleFavorite(id)`) и инвалидирует `['favourites', userId]`, `['location', id]`, `['locations']`.
+* **Использование:** Вызывается внутри LocationCard при клике на иконку избранное⭐
+**Актаульный код useToggleFavourite.js:**
+```js
+'use client';
+import { useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+/**
+ * useToggleFavourite(id) — возвращает функцию‑обработчик, которую нужно вызывать
+ * при клике на «звёздочку». Хук:
+ *  • Оптимистично переключает локальный флаг избранного в Zustand;
+ *  • POST /DELETE в таблицу favourites;
+ *  • Инвалидирует кеши favourites, location, locations;
+ *  • Если пользователь не авторизован — открывает LoginModal.
+ * @param {string} locationId UUID локации
+ * @returns {() => void} функция‑обработчик
+ */
+export function useToggleFavourite(locationId) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
+  const queryClient = useQueryClient();
+  const setLoginModal = useUIStore((s) => s.setLoginModal);
+  const favouritesMap  = useUIStore((s) => s.favourites);
+  const toggleFavouriteLocal = useUIStore((s) => s.toggleFavourite);
+  /** Реальный запрос к Supabase */
+  const mutation = useMutation({
+    mutationFn: async (isCurrentlyFav) => {
+      if (!userId) throw new Error('auth-required');
+
+      if (isCurrentlyFav) {
+        // удалить
+        const { error } = await supabase
+          .from('favourites')
+          .delete()
+          .eq('user_id', userId)
+          .eq('location_id', locationId);
+        if (error) throw error;
+      } else {
+        // добавить
+        const { error } = await supabase
+          .from('favourites')
+          .insert({ user_id: userId, location_id: locationId });
+        if (error) throw error;
+      }
+    },
+    // ---------- optimistic update ----------
+    onMutate: async () => {
+      const prevIsFav = Boolean(favouritesMap[locationId]);
+      toggleFavouriteLocal(locationId);                 // локальный optimistic
+      await queryClient.cancelQueries(['favourites', userId]);
+      return { prevIsFav };
+    },
+
+    onError: (err, _vars, ctx) => {
+      if (err?.message === 'auth-required') {
+        setLoginModal(true);                            // открыть модалку логина
+        return;
+      }
+      // откат optimistic‑переключения
+      toggleFavouriteLocal(locationId);
+      if (ctx?.prevIsFav !== undefined) {
+        queryClient.setQueryData(['favourites', userId], (old) => old);
+      }
+      toast.error(err.message || 'Не удалось обновить избранное');
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries(['favourites', userId]);
+      queryClient.invalidateQueries(['location', locationId]);
+      queryClient.invalidateQueries(['locations']);
+    },
+  });
+  /** Хэндлер, который будет привязан к onClick */
+  return useCallback(() => {
+    if (!userId) {
+      // не авторизован — просто показываем LoginModal
+      setLoginModal(true);
+      return;
+    }
+    mutation.mutate(Boolean(favouritesMap[locationId]));
+  }, [mutation, userId, favouritesMap, locationId, setLoginModal]);
+}
+```
+
+---
+### FavouriteFetcher
+
+* **Назначение:** Компонент `FavouriteFetcher` обеспечивает актуализацию избранных локаций пользователя при изменении состояния аутентификации.
+* **Функционал:**
+  * Получает ID текущего пользователя из хука `useAuth`.
+  * При наличии авторизованного пользователя запрашивает его избранные локации из таблицы `favourites` в Supabase.
+  * Гидратирует локальное хранилище Zustand, устанавливая флаги избранного для соответствующих `location_id`.
+  * При отсутствии пользователя (логауте) очищает локальное состояние и удаляет соответствующие кэш-запросы из React Query.
+**Актаульный код FavouriteFetcher.js:**
+```js
+'use client';
+import { useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { useUIStore } from '@/store/uiStore';
+
+export default function FavouriteFetcher() {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const queryClient = useQueryClient();
+  const hydrateFavourites = useUIStore((s) => s.hydrateFavourites);
+
+  useEffect(() => {
+    if (userId) {
+      // При логине — подгружаем current favourites
+      (async () => {
+        try {
+          const data = await queryClient.fetchQuery({
+            queryKey: ['favourites', userId],
+            queryFn: async () => {
+              const { data, error } = await supabase
+                .from('favourites')
+                .select('location_id')
+                .eq('user_id', userId);
+              if (error) throw error;
+              return data;
+            },
+          });
+          // гидратируем Zustand-мэп: { [locationId]: true }
+          hydrateFavourites(data.map((f) => f.location_id));
+        } catch (e) {
+          console.error('FavouriteFetcher:', e);
+        }
+      })();
+    } else {
+      // При логауте — сбрасываем локальное состояние и чистим кеш
+      hydrateFavourites([]);
+      queryClient.removeQueries({ queryKey: ['favourites'] });
+    }
+  }, [userId, queryClient, hydrateFavourites]);
+
   return null;
 }
 ```
