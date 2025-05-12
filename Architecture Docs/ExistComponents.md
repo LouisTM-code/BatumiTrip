@@ -137,7 +137,6 @@ import LocationForm from '@/components/LocationForm';
 export default function AddLocationPage() {
   return (
     <main className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4">Добавить локацию</h1>
       <LocationForm />
     </main>
   );
@@ -891,8 +890,8 @@ export default function LoginModal() {
                     Авторизация
                   </DialogTitle>
                   <p className="mt-2 text-center text-sm italic text-muted-foreground">
-                    Бывали здесь раньше? Введите то же Имя. <br /> Оно связано с
-                    Вашими локациями.
+                    Введите Имя и запомните его.<br />Оно будет связано с
+                    Вашими локациями. <br /> Регистр имеет значение.
                   </p>
                 </DialogHeader>
                 {/* ---------- Form ---------- */}
@@ -1470,6 +1469,173 @@ export default function AttachImage({ control, name = "imageFile", rules, initia
   );
 }
 ```
+---
+### FormNavigation
+
+* **Назначение:** Нижняя навигация формы: «Назад» | «Далее»/«Сохранить».
+**Актаульный код FormNavigation.js:**
+```js
+'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+/* анимированная обёртка для shadcn‑кнопок */
+const MotionButton = motion(Button);
+
+export default function FormNavigation({
+  currentStep,
+  totalSteps,
+  onBack,
+  isSubmitting,
+  className = '',
+}) {
+  const isLast = currentStep === totalSteps;
+
+  return (
+    <div
+      className={cn(
+        /* mobile — fixed bottom bar */
+        'fixed bottom-0 left-0 z-40 w-full border-t border-border bg-card/90 backdrop-blur-md px-4 py-3',
+        /* desktop — как было */
+        'md:static md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-0',
+        'flex justify-between',
+        className,
+      )}
+    >
+      <MotionButton
+        variant="outline"
+        type="button"
+        onClick={onBack}
+        aria-label="Вернуться"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        Назад
+      </MotionButton>
+
+      <MotionButton
+        type="submit"
+        disabled={isSubmitting}
+        aria-label={isLast ? 'Сохранить' : 'Следующий шаг'}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        {isLast
+          ? isSubmitting
+            ? 'Сохраняем…'
+            : 'Сохранить'
+          : 'Далее'}
+      </MotionButton>
+    </div>
+  );
+}
+```
+
+---
+### FormHeader
+
+* **Назначение:** Заголовок формы с Круговой индикатор прогресса с числовым отображением шага.
+**Актаульный код FormHeader.js:**
+```js
+'use client';
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+
+function CircleProgress({ current, total, size = 48, stroke = 4 }) {
+  const radius = (size - stroke) / 2;
+  const circ = 2 * Math.PI * radius;
+  const progress = current / total;
+  const offset = circ * (1 - progress);
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="text-primary"
+      aria-hidden="true"
+    >
+      {/* фон */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke="currentColor"
+        strokeWidth={stroke}
+        opacity={0.15}
+        fill="none"
+      />
+      {/* прогресс — поворачиваем сам путь, а не весь svg */}
+      <motion.circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeDasharray={circ}
+        initial={false}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 0.45, ease: 'easeInOut' }}
+        strokeLinecap="round"
+        fill="none"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      {/* числовой счётчик — остаётся горизонтальным */}
+      <motion.text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize={size * 0.28}
+        fill="currentColor"
+        className="origin-center text-foreground select-none"
+        key={current}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1.35 }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        transition={{ duration: 0.3 }}
+      >
+        {`${current}/${total}`}
+      </motion.text>
+    </svg>
+  );
+}
+
+export default function FormHeader({
+  currentStep,
+  totalSteps,
+  title,
+  nextTitle,
+  className = '',
+}) {
+  return (
+    <header className={cn('mb-6 flex items-center gap-4', className)}>
+      <CircleProgress current={currentStep} total={totalSteps} />
+      <div className="flex flex-col overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.h2
+            key={title}
+            className="text-lg font-semibold leading-tight"
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -8, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {title}
+          </motion.h2>
+        </AnimatePresence>
+        {nextTitle && (
+          <span className="text-xs text-muted-foreground">
+            Далее:&nbsp;{nextTitle}
+          </span>
+        )}
+      </div>
+    </header>
+  );
+}
+```
 
 ---
 ### LocationForm
@@ -1479,21 +1645,24 @@ export default function AttachImage({ control, name = "imageFile", rules, initia
 **Актаульный код LocationForm:**
 ```js
 'use client';
-import React from 'react';
+import React, { useState, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useForm } from 'react-hook-form';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
-import AttachImage from './AttachImage';
+import AttachImage from '@/components/AttachImage';
+import FormHeader from '@/components/FormHeader';
+import FormNavigation from '@/components/FormNavigation';
 import { useAddLocation } from '@/hooks/useAddLocation';
 import { useUpdateLocation } from '@/hooks/useUpdateLocation';
-import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
-/**
- * Форма создания или редактирования локации.
- * Если передан initialData.id — режим редактирования, иначе — создания.
- */
+const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
+import successAnimation from '@/public/saveSuccess.json';
+
 export default function LocationForm({ initialData = {}, onSuccess }) {
   const router = useRouter();
   const addLocation = useAddLocation();
@@ -1503,142 +1672,224 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
   const {
     control,
     register,
+    trigger,
     handleSubmit,
     formState: { errors },
   } = useForm({
     defaultValues: {
-      title:       initialData.title       || '',
+      title: initialData.title || '',
       description: initialData.description || '',
-      address:     initialData.address     || '',
-      cost:        initialData.cost        || '',
-      sourceUrl:   initialData.sourceUrl   || '',
-      tags:        initialData.tags        || [],
-      imageFile:   null,
+      address: initialData.address || '',
+      cost: initialData.cost || '',
+      sourceUrl: initialData.sourceUrl || '',
+      tags: initialData.tags || [],
+      imageFile: null,
     },
   });
 
+  const totalSteps = 2;
+  const [step, setStep] = useState(1);
+  // Показываем Lottie сразу при submit
+  const [showSuccess, setShowSuccess] = useState(false);
+  const savedIdRef = useRef(null);
+
   const onSubmit = (data) => {
-    // Собираем payload с file и старым imgUrl
     const payload = {
-      title:       data.title,
+      title: data.title,
       description: data.description,
-      address:     data.address,
-      cost:        data.cost,
-      sourceUrl:   data.sourceUrl,
-      imageFile:   data.imageFile,
-      imgUrl:      initialData.imgUrl   || null,
-      tags:        data.tags,
+      address: data.address,
+      cost: data.cost,
+      sourceUrl: data.sourceUrl,
+      imageFile: data.imageFile,
+      imgUrl: initialData.imgUrl || null,
+      tags: data.tags,
     };
 
     if (isEditMode) {
       updateLocation.mutate(
         { id: initialData.id, data: payload },
-        { onSuccess: () => onSuccess?.() }
+        {
+          onSuccess: () => {
+            savedIdRef.current = initialData.id;
+          },
+          onError: (err) => toast.error(err.message),
+        }
       );
     } else {
-      addLocation.mutate(
-        payload,
-        { onSuccess: (loc) => router.push(`/locations/${loc.id}`) }
-      );
+      addLocation.mutate(payload, {
+        onSuccess: (loc) => {
+          savedIdRef.current = loc.id;
+        },
+        onError: (err) => toast.error(err.message),
+      });
     }
   };
 
-  const isSubmitting = isEditMode
-    ? updateLocation.isLoading
-    : addLocation.isLoading;
+  const wrappedSubmit = handleSubmit(onSubmit);
+  const onFormSubmit = async (e) => {
+    e.preventDefault();
+
+    if (step < totalSteps) {
+      const fieldsToValidate = step === 1 ? ['title'] : [];
+      const valid = await trigger(fieldsToValidate);
+      if (valid) setStep((s) => s + 1);
+      return;
+    }
+    // Непосредственно сразу показываем Lottie
+    setShowSuccess(true);
+    wrappedSubmit();
+  };
+
+  const handleBack = () => {
+    if (step === 1) router.push('/');
+    else setStep((s) => s - 1);
+  };
+  // Экран Lottie-анимации
+  if (showSuccess) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24">
+        <Lottie
+          animationData={successAnimation}
+          loop={false}
+          autoplay
+          className="h-48 w-48"
+          onComplete={() => {
+            if (savedIdRef.current) {
+              router.push(`/locations/${savedIdRef.current}`);
+            } else {
+              router.push('/');
+            }
+            onSuccess?.();
+          }}
+        />
+        <p className="mt-6 text-lg font-semibold text-center">
+          Сохраняем…
+        </p>
+      </div>
+    );
+  }
+
+  const titles = ['Основная информация', 'Дополнительные детали'];
+  const nextTitles = ['Подробности', null];
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Заголовок */}
-      <div>
-        <label htmlFor="title" className="block text-sm font-medium">
-          Заголовок
-        </label>
-        <Input
-          id="title"
-          {...register('title', { required: 'Обязательное поле' })}
-          className="mt-1 w-full"
-        />
-        {errors.title && (
-          <p className="mt-1 text-sm text-red-600">
-            {errors.title.message}
-          </p>
+    <motion.form
+      onSubmit={onFormSubmit}
+      aria-label="Форма локации"
+      className="
+        w-full max-w-2xl mx-auto space-y-6
+        pb-32 md:pb-0
+      "
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <FormHeader
+        currentStep={step}
+        totalSteps={totalSteps}
+        title={titles[step - 1]}
+        nextTitle={nextTitles[step - 1]}
+      />
+
+      <AnimatePresence mode="wait" initial={false}>
+        {step === 1 && (
+          <motion.div
+            key="step1"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium">
+                Заголовок<span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="title"
+                {...register('title', { required: 'Обязательное поле' })}
+                className="mt-1 w-full"
+              />
+              {errors.title && (
+                <p className="mt-1 text-sm text-destructive-foreground">
+                  {errors.title.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium">
+                Описание
+              </label>
+              <Textarea
+                id="description"
+                {...register('description')}
+                className="mt-1 w-full"
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium">Теги</label>
+              <ChooseTag control={control} name="tags" />
+            </div>
+          </motion.div>
         )}
-      </div>
 
-      {/* Описание */}
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium">
-          Описание
-        </label>
-        <Textarea
-          id="description"
-          {...register('description')}
-          className="mt-1 w-full"
-          rows={4}
-        />
-      </div>
+        {step === 2 && (
+          <motion.div
+            key="step2"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="address" className="block text-sm font-medium">
+                Адрес
+              </label>
+              <Input id="address" {...register('address')} className="mt-1 w-full" />
+            </div>
 
-      {/* Адрес */}
-      <div>
-        <label htmlFor="address" className="block text-sm font-medium">
-          Адрес
-        </label>
-        <Input
-          id="address"
-          {...register('address')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label htmlFor="cost" className="block text-sm font-medium">
+                Стоимость
+              </label>
+              <Input id="cost" {...register('cost')} className="mt-1 w-full" />
+            </div>
 
-      {/* Стоимость */}
-      <div>
-        <label htmlFor="cost" className="block text-sm font-medium">
-          Стоимость
-        </label>
-        <Input
-          id="cost"
-          type="number"
-          {...register('cost')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label htmlFor="sourceUrl" className="block text-sm font-medium">
+                Ссылка на источник
+              </label>
+              <Input
+                id="sourceUrl"
+                {...register('sourceUrl')}
+                className="mt-1 w-full break-all"
+              />
+            </div>
 
-      {/* Ссылка на источник */}
-      <div>
-        <label htmlFor="sourceUrl" className="block text-sm font-medium">
-          Ссылка на источник
-        </label>
-        <Input
-          id="sourceUrl"
-          {...register('sourceUrl')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label className="block text-sm font-medium">Изображение</label>
+              <AttachImage
+                control={control}
+                name="imageFile"
+                initialUrl={initialData.imgUrl}
+                className="mt-1"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Выбор тегов */}
-      <div>
-        <label className="block text-sm font-medium">Теги</label>
-        <ChooseTag control={control} name="tags" />
-      </div>
-
-      {/* Картинка */}
-      <div>
-        <label className="block text-sm font-medium">Изображение</label>
-        <AttachImage control={control} name="imageFile" initialUrl={initialData.imgUrl} className="mt-1" />
-      </div>
-
-      {/* Кнопка */}
-      <Button type="submit" disabled={isSubmitting}>
-        {isEditMode
-          ? isSubmitting
-            ? 'Сохраняем…'
-            : 'Сохранить изменения'
-          : isSubmitting
-          ? 'Сохраняем…'
-          : 'Сохранить'}
-      </Button>
-    </form>
+      <FormNavigation
+        currentStep={step}
+        totalSteps={totalSteps}
+        onBack={handleBack}
+        isSubmitting={addLocation.isLoading || updateLocation.isLoading}
+      />
+    </motion.form>
   );
 }
 ```

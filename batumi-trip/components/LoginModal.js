@@ -104,8 +104,8 @@ export default function LoginModal() {
                     Авторизация
                   </DialogTitle>
                   <p className="mt-2 text-center text-sm italic text-muted-foreground">
-                    Бывали здесь раньше? Введите то же Имя. <br /> Оно связано с
-                    Вашими локациями.
+                    Введите Имя и запомните его.<br />Оно будет связано с
+                    Вашими локациями. <br /> Регистр имеет значение.
                   </p>
                 </DialogHeader>
 
