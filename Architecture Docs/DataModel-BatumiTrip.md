@@ -179,77 +179,7 @@ create index if not exists idx_favourites_location on public.favourites(location
 ```
 
 ---
-## 5. Политики RLS
-
-```sql
--- 5. Политики RLS (исправлено приведение типов)
-
--- USERS
-alter table public.users      enable row level security;
-
-create policy "Users: everyone select"
-  on public.users for select using (true);
-create policy "Users: anon insert"
-  on public.users
-  for insert
-  with check (true);
-create policy "Users: anon update"
-  on public.users for update
-  using (true)
-  with check (true);
-create policy "Users: self delete"
-  on public.users for delete using (auth.uid()::text = id);
-
--- LOCATIONS
-alter table public.locations  enable row level security;
-
-create policy "Locations: everyone select"
-  on public.locations for select using (true);
-create policy "Locations: anon insert"
-  on public.locations for insert
-  with check (true);
-create policy "Locations: owner update"
-  on public.locations for update
-    using (auth.uid()::text = user_id)
-    with check (auth.uid()::text = user_id);
-create policy "Locations: owner delete"
-  on public.locations for delete using (auth.uid()::text = user_id);
-
--- TAGS
-alter table public.tags       enable row level security;
-
-create policy "Tags: everyone select"
-  on public.tags for select using (true);
-create policy "Tags: any insert"
-  on public.tags for insert with check (true);
-
--- LOCATIONS_TAGS
-alter table public.locations_tags enable row level security;
-
-create policy "LT: everyone select"
-  on public.locations_tags for select using (true);
-create policy "LT: owner insert"
-  on public.locations_tags for insert with check (
-    (select user_id from public.locations where id = location_id)::text = auth.uid()::text
-  );
-create policy "LT: owner delete"
-  on public.locations_tags for delete using (
-    (select user_id from public.locations where id = location_id)::text = auth.uid()::text
-  );
-
--- FAVOURITES
-alter table public.favourites enable row level security;
-
-create policy "Fav: owner select"
-  on public.favourites for select using (auth.uid()::text = user_id);
-create policy "Fav: owner insert"
-  on public.favourites for insert with check (auth.uid()::text = user_id);
-create policy "Fav: owner delete"
-  on public.favourites for delete using (auth.uid()::text = user_id);
-```
-
----
-## 6. RPC-функции 
+## 5. RPC-функции 
 ```sql
 -- add_location_tag
 CREATE OR REPLACE FUNCTION public.add_location_tag(
@@ -400,8 +330,20 @@ BEGIN
 END;
 $$;
 ```
+
 ---
-## Примечания к реализации
-* **Аутентификация:** NextAuth JWT, совпадение `auth.uid()` и `users.id`.
-* **Избранное:** фронтенд проверяет `isFavourite` через таблицу `favourites`.
-* **Удаление пользователя:** каскадом удаляются его локации и избранное.
+## 6. Supabase Storage
+
+* **Bucket:** `images` (название задаётся в `NEXT_PUBLIC_SUPABASE_BUCKET`).
+* **Путь файла:** `{user_id}/{timestamp-rand}.{ext}` — генерируется утилитой `uploadImage` перед вызовом `create_location_with_tags` .
+* **Удаление:** хук `useDeleteLocation` и утилита `deleteImage` удаляют файл из Storage при удалении/замене изображения .
+
+---
+## 7. Примечания
+
+* **Бесконечная прокрутка** (`useLocations`) использует индекс `created_at desc` и курсоры (`lt('created_at', cursor)`) .
+* **Поиск** реализован функцией `ILIKE '%…%'` + `pg_trgm`, что адекватно для ≤ 1000 записей.
+* **Избранное** хранится в отдельной таблице; на фронте признак `isFavourite` вычисляется REST‑джойном `favourites!left(user_id)` .
+* **RLS** допускает анонимный `INSERT` в `locations`/`tags`, потому что логин совпадает с `auth.uid()` (NextAuth Credentials) — это уже «идентифицированный» пользователь.
+
+---

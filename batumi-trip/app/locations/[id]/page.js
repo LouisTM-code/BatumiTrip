@@ -79,16 +79,12 @@ export default function LocationDetailPage() {
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-bold">Редактировать локацию</h1>
           <LocationForm
             initialData={location}
             onSuccess={() => {
               setIsEditing(false);
             }}
           />
-          <Button variant="link" onClick={() => setIsEditing(false)}>
-            Отмена
-          </Button>
         </>
       )}
     </main>

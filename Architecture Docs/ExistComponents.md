@@ -1,6 +1,69 @@
 # **Справочник компонентов и хуков BatumiTrip**
 
 > Этот документ является единым источником истины (source of truth) о текущей структуре и состоянии кода проекта Batumi Trip. Он служит опорой для AI‑генератора кода и всей команды разработчиков, предоставляя детальные описания существующих компонентов, хуков и утилит. Используя этот справочник, AI сможет корректно генерировать и модифицировать код, опираясь на актуальные реализации и внутренние соглашения по стилю.
+---
+## Иерархия компонентов
+```text
+RootLayout
+├─ <html>
+│  └─ <body>
+│     ├─ Providers
+│     │  ├─ QueryClientProvider
+│     │  │  └─ ReactQueryDevtools   (только в development)
+│     │  ├─ AuthProvider
+│     │  │  └─ SessionProvider
+│     │  └─ ThemeProvider
+│     │     └─ NextThemesProvider
+│     ├─ FavouriteFetcher
+│     └─ {page children}
+│
+├─ / (LocationListPage)
+│  ├─ TagsPrefetcher
+│  ├─ Header
+│  │  ├─ Logo <Link>
+│  │  ├─ Search <button> ─┐
+│  │  │                   └─ SearchBar (открывается/закрывается)
+│  │  │                      ├─ Input
+│  │  │                      └─ TagBadge × N
+│  │  ├─ Login/Logout <Button>
+│  │  └─ LoginModal (вызывается из Zustand)
+│  ├─ LocationList
+│  │  ├─ (SkeletonCard × 6)                          – пока идёт начальная загрузка
+│  │  ├─ LocationCard × N
+│  │  │  ├─ <Image>
+│  │  │  ├─ TagBadge × M
+│  │  │  └─ Favourite <button>
+│  │  └─ Intersection‑observer <div>                 – триггер беск. прокрутки
+│  └─ AddLocationButton  → <Link href="/locations/new">
+│
+├─ /locations/new (AddLocationPage)
+│  └─ LocationForm
+│     ├─ Input (заголовок)
+│     ├─ Textarea (описание)
+│     ├─ Input (адрес, стоимость, sourceUrl)
+│     ├─ ChooseTag
+│     │  ├─ Inline <span> (существующие теги)
+│     │  └─ Input + Button (добавить новый тег)
+│     ├─ AttachImage
+│     │  ├─ <input type="file">
+│     │  └─ <img> (предпросмотр / X <button>)
+│     └─ Button (Сохранить)
+│
+├─ /locations/[id] (LocationDetailPage)
+│  │  (SkeletonCard — при загрузке)
+│  │  (Ошибка <div> — при isError)
+│  └─ {!isEditing
+│      ├─ LocationDetail
+│      │  ├─ <Image>
+│      │  ├─ TagBadge × M
+│      │  └─ Button (Назад)
+│      └─ [если автор] Edit & Delete <Button>
+│     : LocationForm (режим Edit) + Button (Отмена)
+│
+└─ API / служебные компоненты (не попадают в DOM‑дерево страниц)
+   ├─ route.js (NextAuth endpoint)
+   └─ SkeletonCard, TagBadge, etc. — вспомогательные UI‑элементы
+```
 
 ---
 ## Актуальный код и описание компонентов
@@ -13,7 +76,7 @@
 ```js
 import '@/styles/globals.css';
 import Providers from '@/components/Providers';
-
+import FavouriteFetcher from '@/lib/FavouriteFetcher';
 export const metadata = {
   title: 'Batumi Trip',
   description: 'SPA для совместного планирования путешествия друзей в Батуми',
@@ -23,7 +86,10 @@ export default function RootLayout({ children }) {
   return (
     <html lang="ru" suppressHydrationWarning>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <FavouriteFetcher />
+          {children}
+          </Providers>
       </body>
     </html>
   );
@@ -41,13 +107,17 @@ export default function RootLayout({ children }) {
 import LocationList from '@/components/LocationList';
 import AddLocationButton from '@/components/AddLocationButton'
 import Header from '@/components/Header';
+import TagsPrefetcher from '@/lib/TagsPrefetcher';
+import FavouriteFilterButton from '@/components/FavouriteFilterButton';
 
 export default function LocationListPage() {
   return (
     <main className="container mx-auto px-4 py-6 space-y-6">
+      <TagsPrefetcher />
       <Header />
       <LocationList />
       <AddLocationButton />
+      <FavouriteFilterButton />
     </main>
   );
 }
@@ -67,7 +137,6 @@ import LocationForm from '@/components/LocationForm';
 export default function AddLocationPage() {
   return (
     <main className="container mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold mb-4">Добавить локацию</h1>
       <LocationForm />
     </main>
   );
@@ -156,16 +225,12 @@ export default function LocationDetailPage() {
         </>
       ) : (
         <>
-          <h1 className="text-2xl font-bold">Редактировать локацию</h1>
           <LocationForm
             initialData={location}
             onSuccess={() => {
               setIsEditing(false);
             }}
           />
-          <Button variant="link" onClick={() => setIsEditing(false)}>
-            Отмена
-          </Button>
         </>
       )}
     </main>
@@ -178,30 +243,50 @@ export default function LocationDetailPage() {
 
 * **Назначение:** Навигационная панель (обычно шапка страницы) с названием приложения и кнопкой авторизации/выхода.
 * **Взаимодействие:** Показывает название или логотип приложения. Если пользователь не авторизован, отображает кнопку "Войти". Нажатие на кнопку "Войти" открывает `LoginModal` (контролируется глобальным состоянием, например Zustand). Если пользователь авторизован, может показывать приветствие и кнопку "Выйти", вызывающую функцию `signOut()` из `useAuth`.
-**Актаульный код Header:**
+**Актаульный код Header.js:**
 ```js
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import animationData from "@/public/userAnimation.json";
 import { useAuth } from "@/hooks/useAuth";
 import { useUIStore } from "@/store/uiStore";
 import { Button } from "@/components/ui/button";
 import LoginModal from "@/components/LoginModal";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, LogIn, Search } from "lucide-react";
+import { LogIn, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SearchBar from "@/components/SearchBar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
   const [isSearchOpen, setSearchOpen] = useState(false);
+  const lottieRef = useRef(null);
+
   const handleLoginClick = () => setLoginModal(true);
   const toggleSearch = () => setSearchOpen((o) => !o);
+  /** Запускаем один цикл анимации при нажатии */
+  const playAnimation = () => {
+    if (lottieRef.current) {
+      lottieRef.current.goToAndPlay(0, true);
+    }
+  };
 
   return (
     <>
+      {/* ---------- Шапка ---------- */}
       <motion.header
         initial={{ y: -16, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -210,10 +295,10 @@ export default function Header({ className }) {
           "sticky top-0 z-30 flex w-full items-center justify-between px-4 py-3",
           "bg-primary/90 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/80",
           "shadow-md text-primary-foreground",
-          className
+          className,
         )}
       >
-        {/* Logo */}
+        {/* Логотип */}
         <Link href="/" className="flex items-center">
           <Image
             src="/logo.png"
@@ -224,31 +309,50 @@ export default function Header({ className }) {
           />
           <span className="sr-only">Batumi Trip</span>
         </Link>
-        {/* Search Icon */}
+        {/* Иконка поиска */}
         <button
           onClick={toggleSearch}
           aria-label="Поиск"
-          className="p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded"
+          className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
         >
           <Search className="h-6 w-6" aria-hidden="true" />
         </button>
-        {/* Auth section */}
+        {/* ---------- Auth‑блок ---------- */}
         {user ? (
-          <div className="flex items-center gap-4">
-            <span className="select-none text-base font-semibold">
-              {user.id}
-            </span>
-            <Button
-              size="md"
-              variant="secondary"
-              onClick={() => signOut()}
-              aria-label="Выйти"
-              className="gap-2 px-4 py-2"
-            >
-              <LogOut className="h-5 w-5" aria-hidden="true" />
-              <span className="not-sr-only">Выйти</span>
-            </Button>
-          </div>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <div
+                role="button"
+                aria-label="Меню пользователя"
+                className="h-10 w-10 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                onClick={playAnimation}
+              >
+                <Lottie
+                  lottieRef={lottieRef}
+                  animationData={animationData}
+                  loop={false}
+                  autoplay={false}
+                  className="h-10 w-10"
+                />
+              </div>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel className="block w-full text-center uppercase truncate select-none tracking-wide px-2 py-1">
+                {user.id}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  signOut();
+                }}
+                className="text-destructive focus:text-destructive"
+              >
+                Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             size="md"
@@ -261,7 +365,7 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
-      {/* Search bar */}
+      {/* ---------- Поисковая строка ---------- */}
       <AnimatePresence>
         {isSearchOpen && (
           <motion.div
@@ -271,11 +375,12 @@ export default function Header({ className }) {
             transition={{ duration: 0.2 }}
           >
             <div className="container mx-auto px-4 py-2 flex justify-end">
-              <SearchBar placeholder="Найти локацию..." />
+              <SearchBar placeholder="Давайте найдём что-то интересное 🧐" />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ---------- Модалка логина ---------- */}
       <LoginModal />
     </>
   );
@@ -286,57 +391,91 @@ export default function Header({ className }) {
 
 * **Назначение:** Поле поиска по заголовкам
 * **Взаимодействие:** Пользователь вводит текст, он сохраняется в глобальном состоянии (например, Zustand) как текущий поисковый запрос (`searchQuery`). Поисковое состояние используют `useLocations` или компонент списка для фильтрации вывода. Возможна функциональность debounce (задержка поиска после ввода) для оптимизации запросов.
-**Актаульный код SearchBar:**
+**Актаульный код SearchBar.js:**
 ```js
 "use client";
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { useUIStore } from "@/store/uiStore";
+import { useTags } from "@/hooks/useTags";
+import TagBadge from "@/components/TagBadge";
 import { cn } from "@/lib/utils";
 /**
- * SearchBar — поле ввода для поиска локаций по заголовку и тегам.
- * Самостоятельно сохраняет текст запроса в global‑store (Zustand).
+ * SearchBar — поле ввода + список тегов-фильтров.
  *
- * Props:
- *  @param {string} [placeholder] — текст плейсхолдера ввода (по умолчанию «Поиск локаций…»)
+ * •  Данные ввода → Zustand (`searchQuery`) c debounce = 1 сек.
+ * •  Теги грузятся через useTags() и отображаются под инпутом.
+ * •  Клик по тегу переключает его в Zustand (`toggleTag` внутри TagBadge).
+ *
+ * @param placeholder – плейсхолдер строки поиска
  */
-export default function SearchBar({ placeholder = "Поиск локаций…", className }) {
-  /* Глобальный Zustand store */
+export default function SearchBar({
+  placeholder = "Поиск локаций…",
+  className,
+}) {
+  /* ---------- глобальный поиск (Zustand) ---------- */
   const searchQuery = useUIStore((s) => s.searchQuery);
   const setSearchQuery = useUIStore((s) => s.setSearchQuery);
-  /* Локальное состояние ввода */
+  /* ---------- локальное состояние ввода ---------- */
   const [value, setValue] = useState(searchQuery);
-  /* Debounce (1000 мс) перед обновлением Zustand */
   useEffect(() => {
     const id = window.setTimeout(() => {
-      // Обновляем global‑state только если строка изменилась
-      if (value !== searchQuery) {
-        setSearchQuery(value);
-      }
+      if (value !== searchQuery) setSearchQuery(value);
     }, 1000);
     return () => window.clearTimeout(id);
   }, [value, searchQuery, setSearchQuery]);
-  /* Сбрасываем локальный инпут, если глобальное состояние поменялось извне */
+  /* если глобальное состояние изменилось извне — синхронизируем input */
   useEffect(() => {
     if (searchQuery !== value) setValue(searchQuery);
-  }, [searchQuery]);
+  }, [searchQuery, value]);
+  /* ---------- список тегов ---------- */
+  const { data: tags = [], isLoading, isError } = useTags();
 
   return (
     <motion.div
       initial={{ y: -8, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -8, opacity: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
-      className={cn("w-full", className)}
+      className={cn("w-full space-y-3", className)}
     >
+      {/* строка поиска */}
       <Input
         type="search"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         aria-label="Поле поиска локаций"
-        className="w-full" // Tailwind: растягиваем на 100 %
+        className="w-full"
       />
+      {/* блок тегов */}
+      <AnimatePresence initial={false}>
+        {/** оставляем тег-бар даже когда идёт загрузка, чтобы высота была стабильна */}
+        <motion.div
+          key="tag-bar"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <div className="flex flex-wrap gap-2 pt-1">
+            {isLoading && (
+              <span className="text-sm text-muted-foreground">
+                Загружаем теги…
+              </span>
+            )}
+            {isError && (
+              <span className="text-sm text-destructive-foreground">
+                Не удалось загрузить теги
+              </span>
+            )}
+            {tags.map((tag) => (
+              <TagBadge key={tag.id} name={tag.name} />
+            ))}
+          </div>
+        </motion.div>
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -347,25 +486,87 @@ export default function SearchBar({ placeholder = "Поиск локаций…"
 
 * **Назначение:** Кнопка для перехода к форме создания новой локации.
 * **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
-**Актаульный код AddLocationButton:**
+**Актаульный код AddLocationButton.js:**
 ```js
-'use client';
-import Link from 'next/link';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+"use client";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+/**
+ * Плавающая кнопка «Добавить локацию».
+ * • фиксирована в правом нижнем углу на всех брейкпоинтах;
+ * • скрыта для неавторизованных посетителей.
+ */
+export default function AddLocationButton({ className = "" }) {
+  const { user } = useAuth();
+  if (!user) return null;
 
-export default function AddLocationButton({ className = '' }) {
   return (
     <Button
       asChild
-      className={`fixed bottom-4 right-4 sm:static flex items-center gap-2 ${className}`}
+      className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
       <Link href="/locations/new">
         <Plus className="w-4 h-4" aria-hidden="true" />
-        <span className="sr-only sm:not-sr-only">Добавить локацию</span>
+        <span className="sr-only md:not-sr-only">Добавить локацию</span>
       </Link>
     </Button>
+  );
+}
+```
+
+---
+### FavouriteFilterButton
+
+* **Назначение:** Кнопка для фильтрации `LocationList`по избранному.
+* **Взаимодействие:** На главной странице располагается снизу слева. При нажатии переводит обновляет `uiStore`. Dсегда видимый при прокрутке страницы (fixed position).
+**Актаульный код FavouriteFilterButton.js:**
+```js
+'use client';
+import { Star } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+import { cn } from '@/lib/utils';
+
+export default function FavouriteFilterButton({ className = '' }) {
+  // 1) хуки всегда на самом верху
+  const { user } = useAuth();
+  const showOnlyFavourites = useUIStore((s) => s.showOnlyFavourites);
+  const toggle = useUIStore((s) => s.toggleShowOnlyFavourites);
+  // 2) только после этого — ранний return для неавторизованных
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      initial={{ scale: 0, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+      className={cn('fixed bottom-4 left-4 z-50', className)}
+    >
+      <Button
+        variant={showOnlyFavourites ? 'secondary' : 'outline'}
+        size="icon"
+        aria-label={
+          showOnlyFavourites
+            ? 'Показать все локации'
+            : 'Показать только избранные'
+        }
+        onClick={toggle}
+        className="rounded-full shadow-lg"
+      >
+        <Star
+          className="h-5 w-5"
+          stroke="currentColor"
+          fill={showOnlyFavourites ? 'currentColor' : 'none'}
+        />
+      </Button>
+    </motion.div>
   );
 }
 ```
@@ -381,22 +582,23 @@ export default function AddLocationButton({ className = '' }) {
 **Актаульный код LocationList:**
 ```js
 "use client";
-
 import React, { useEffect } from "react";
 import { useInView } from "react-intersection-observer";
-
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabaseClient";
 import { useLocations } from "@/hooks/useLocations";
 import SkeletonCard from "@/components/SkeletonCard";
 import LocationCard from "@/components/LocationCard";
-
 /**
  * LocationList — контейнер для списка карточек локаций.
- * При монтировании вызывает useLocations() (useInfiniteQuery).
- * Пока isLoading — рендерит несколько SkeletonCard.
- * Затем выводит LocationCard для каждой локации.
- * При скролле до конца (Intersection Observer) — вызывает fetchNextPage().
+ *
+ * • Бесконечная прокрутка (useInfiniteQuery + Intersection Observer).
+ * • Realtime‑подписка на INSERT / UPDATE / DELETE в таблице `locations`.
+ *   ◦ INSERT — инвалидируем кэш, чтобы подтянуть новую локацию.
+ *   ◦ UPDATE — патчим элемент в кэше без полного рефетча.
+ *   ◦ DELETE — удаляем элемент из кэша.
  */
-const LocationList = () => {
+export default function LocationList() {
   const {
     data,
     isLoading,
@@ -405,17 +607,74 @@ const LocationList = () => {
     hasNextPage,
     isFetchingNextPage,
   } = useLocations();
-  const { ref, inView } = useInView();
 
-  // При появлении таргета вьюпорт вызывает загрузку следующей страницы
+  const { ref, inView } = useInView();
+  const queryClient = useQueryClient();
+
+  /* ---------- Infinite Scroll ---------- */
   useEffect(() => {
     if (inView && hasNextPage) {
       fetchNextPage();
     }
   }, [inView, hasNextPage, fetchNextPage]);
 
+  /* ---------- Realtime subscription ---------- */
+  useEffect(() => {
+    const channel = supabase
+      .channel("realtime:locations-changes")
+      // INSERT — просто инвалидируем, чтобы дошли новые записи
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "locations" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["locations"] });
+        }
+      )
+      // UPDATE — точечно патчим кэш, избегая полного запроса
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "locations" },
+        ({ new: newRow }) => {
+          queryClient.setQueriesData({ queryKey: ["locations"] }, (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                items: page.items.map((item) =>
+                  item.id === newRow.id ? { ...item, ...newRow } : item
+                ),
+              })),
+            };
+          });
+        }
+      )
+      // DELETE — удаляем карточку из кэша
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "locations" },
+        ({ old: oldRow }) => {
+          queryClient.setQueriesData({ queryKey: ["locations"] }, (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                items: page.items.filter((item) => item.id !== oldRow.id),
+              })),
+            };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  /* ---------- Render ---------- */
   if (isLoading) {
-    // Рендерим 6 скелетонов пока идёт загрузка :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
     return (
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[...Array(6)].map((_, idx) => (
@@ -432,13 +691,12 @@ const LocationList = () => {
   return (
     <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {data.pages.map(page =>
-          page.items.map(location => (
+        {data.pages.map((page) =>
+          page.items.map((location) => (
             <LocationCard key={location.id} location={location} />
           ))
         )}
       </div>
-      {/* Целевая точка для Intersection Observer */}
       <div ref={ref} className="py-8 text-center">
         {isFetchingNextPage
           ? "Загрузка..."
@@ -448,10 +706,7 @@ const LocationList = () => {
       </div>
     </>
   );
-};
-
-export default LocationList;
-
+}
 ```
 
 ---
@@ -537,12 +792,11 @@ export default function AuthProvider({ children }) {
 **Актаульный код LoginModal.js:**
 ```js
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useUIStore } from "@/store/uiStore";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -553,59 +807,90 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
+import animationData from "@/public/loginAnimation.json";
+// ---------- lazy‑загрузка Lottie ----------
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function LoginModal() {
+  /* ----- глобальный UI‑state (Zustand) ----- */
   const show = useUIStore((s) => s.showLoginModal);
   const setShow = useUIStore((s) => s.setLoginModal);
+  /* ----- auth‑статус ----- */
   const { status } = useSession();
-
-  const [error, setError] = useState("");
+  /* ----- локальный стэйт формы ----- */
   const [login, setLogin] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Закрыть при авторизации
+  const [error, setError] = useState("");
+  const [isSubmitting, setSubmitting] = useState(false);
+  const [focused, setFocused] = useState(false);
+  /* ----- автопоказ, если пользователь не авторизован ----- */
+  useEffect(() => {
+    if (status === "unauthenticated" && !show) setShow(true);
+  }, [status, show, setShow]);
+  /* ----- закрыть МОДАЛКУ только ПОСЛЕ успешного логина ----- */
   useEffect(() => {
     if (status === "authenticated") setShow(false);
   }, [status, setShow]);
-
-  async function handleSubmit(e) {
+  /* ----- валидация и отправка формы ----- */
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = login.trim();
-    const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/;
+    const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/; // 3–32 буквы (лат/кирилл)
     if (!re.test(trimmed)) {
-      setError(
-        "Неверное имя: только буквы латиницы и кириллицы, без цифр и спецсимволов, 3–32 символа."
-        );
+      setError("Неверное имя: 3–32 символа, только буквы.");
       return;
     }
-    setIsSubmitting(true);
-    await signIn("credentials", {
-      username: trimmed,
-      redirect: false,
-    });
-    setIsSubmitting(false);
-  }
+    setError("");
+    setSubmitting(true);
+    await signIn("credentials", { username: trimmed, redirect: false });
+    setSubmitting(false);
+  };
+  /* ----- фильтруем onOpenChange, запрещая закрывать окно ----- */
+  const handleOpenChange = useCallback(
+    /** @param {boolean} next */ (next) => {
+      if (next) setShow(true); // permit only attempts to OPEN, ignore close
+    },
+    [setShow]
+  );
 
   return (
     <AnimatePresence>
       {show && (
-        <Dialog open={show} onOpenChange={setShow}>
-          <DialogPortal>                                  {/* ① */}
-            <DialogOverlay />                              {/* ② */}
-            <DialogContent>                                {/* ③ */}
+        <Dialog open={show} onOpenChange={handleOpenChange}>
+          <DialogPortal>
+            {/* размытый фон вместо затемнения */}
+            <DialogOverlay className="fixed inset-0 bg-background/30 backdrop-blur-sm" />
+
+            <DialogContent
+              /* скрываем стандартный крестик внутри Content */
+              className="w-full max-w-sm overflow-hidden rounded-xl bg-card text-card-foreground shadow-lg [&>button]:hidden"
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="bg-card text-card-foreground rounded-xl shadow-lg w-full max-w-sm overflow-hidden"
+                transition={{ duration: 0.4 }}
               >
-                <DialogHeader className="px-6 pt-6">
-                  <DialogTitle className="text-center text-xl font-semibold">
-                    Войти без пароля
-                  </DialogTitle>
-                </DialogHeader>
+                {/* ---------- Header ---------- */}
+                <DialogHeader className="flex flex-col items-center px-6 pt-6">
+                  <motion.div
+                    initial={{ scale: 0.5, opacity: 0.1 }}
+                    animate={{ scale: 1.8, opacity: 1 }}
+                    transition={{ duration: 6 }}
+                    className="mb-4 h-24 w-24"
+                  >
+                    <Lottie animationData={animationData} loop autoplay />
+                  </motion.div>
 
+                  <DialogTitle className="text-center text-xl font-semibold">
+                    Авторизация
+                  </DialogTitle>
+                  <p className="mt-2 text-center text-sm italic text-muted-foreground">
+                    Введите Имя и запомните его.<br />Оно будет связано с
+                    Вашими локациями. <br /> Регистр имеет значение.
+                  </p>
+                </DialogHeader>
+                {/* ---------- Form ---------- */}
                 <form
                   onSubmit={handleSubmit}
                   className="space-y-4 px-6 pb-6 pt-4"
@@ -613,8 +898,11 @@ export default function LoginModal() {
                 >
                   <Input
                     id="username"
-                    placeholder="Ваш логин"
+                    placeholder="Познакомимся?"
                     autoComplete="username"
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    className="peer"
                     value={login}
                     onChange={(e) => setLogin(e.target.value)}
                     required
@@ -627,7 +915,7 @@ export default function LoginModal() {
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3 }}
-                        className="overflow-hidden bg-red-100 border border-red-300 text-red-800 rounded p-2 text-sm"
+                        className="overflow-hidden rounded border border-red-300 bg-red-100 p-2 text-sm text-red-800"
                       >
                         {error}
                       </motion.div>
@@ -671,29 +959,55 @@ import { Star } from "lucide-react";
 import { motion } from "framer-motion";
 import TagBadge from "@/components/TagBadge";
 import { useUIStore } from "@/store/uiStore";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
-
+import { useToggleFavourite } from "@/hooks/useToggleFavourite";
+/**
+ * LocationCard — карточка‑превью локации.
+ * • Иконка избранного перенесена под изображение — выравнена
+ *   по правому краю заголовка (flex‑контейнер).  
+ * • Заголовок ограничен двумя строками через `line-clamp-2`.
+ * • Фон карточки — переменная `card`, текст — `card-foreground`.
+ */
 const LocationCard = ({ location }) => {
-  const { id, title, description, imgUrl, tags = [], isFavourite } = location;
+  const {
+    id,
+    title,
+    description,
+    imgUrl,
+    tags = [],
+    isFavourite: initialFavourite = false,
+  } = location;
+  /* ---------- global UI state ---------- */
   const selectedTags = useUIStore((s) => s.selectedTags);
+  const favouritesMap = useUIStore((s) => s.favourites);
+  const showOnlyFavourites = useUIStore((s) => s.showOnlyFavourites);
+  const isFavourite = favouritesMap[id] ?? initialFavourite;
+  /* ---------- auth ---------- */
+  const { user } = useAuth();
+  /* tag‑filter + «only favourites» filter */
   const matchesFilter =
-    selectedTags.length === 0 ||
-    selectedTags.every((tag) => tags.includes(tag));
+    (!showOnlyFavourites || isFavourite) &&
+    (selectedTags.length === 0 ||
+      selectedTags.every((tag) => tags.includes(tag)));
+  /* optimistic toggle favourite */
+  const toggleFavourite = useToggleFavourite(id);
+  /* fallback image */
+  const imageSrc =
+    imgUrl && /^https?:\/\//.test(imgUrl)
+      ? imgUrl
+      : "https://cataas.com/cat/gif";
 
   if (!matchesFilter) return null;
-
-  // Фолбэк для некорректных URL
-  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
-    ? imgUrl
-    : "https://cataas.com/cat/gif";
 
   return (
     <motion.div
       layout
       whileHover={{ scale: 1.02 }}
-      className="group relative rounded-2xl bg-white p-4 shadow transition-shadow"
+      className="group relative rounded-2xl bg-card text-card-foreground p-4 shadow transition-shadow"
     >
-      <Link href={`/locations/${id}`}>
+      {/* ссылка охватывает интерактивную область просмотра */}
+      <Link href={`/locations/${id}`} className="block no-underline hover:no-underline focus:no-underline">
         <Image
           src={imageSrc}
           alt={title}
@@ -701,27 +1015,50 @@ const LocationCard = ({ location }) => {
           height={240}
           className="h-40 w-full rounded-lg object-cover"
         />
-        <h3 className="mt-4 text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600 line-clamp-3">
+        {/* ---------- Header: title & favourite ---------- */}
+        <div className="mt-4 flex items-start justify-between gap-2">
+          <h3 className="flex-1 text-lg font-semibold line-clamp-2 text-white">
+            {title}
+          </h3>
+          {/* звезда — только для авторизованных */}
+          {user && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                toggleFavourite();
+              }}
+              aria-label={
+                isFavourite ? "Убрать из избранного" : "Добавить в избранное"
+              }
+              className={cn(
+                "rounded-full p-2 transition-colors focus:outline-none focus:ring-2 focus:ring-ring",
+                isFavourite
+                  ? "text-yellow-500"
+                  : "text-gray-400 hover:text-yellow-500"
+              )}
+            >
+              <Star
+                size={20}
+                stroke="currentColor"
+                fill={isFavourite ? "currentColor" : "none"}
+              />
+            </button>
+          )}
+        </div>
+        {/* ---------- Description ---------- */}
+        <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
           {description}
         </p>
       </Link>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {tags.map((tag) => (
-          <TagBadge key={tag} name={tag} />
-        ))}
-      </div>
-      <div
-        className={cn(
-          "absolute top-4 right-4 rounded-full p-2 shadow",
-          isFavourite && "text-yellow-500"
-        )}
-        aria-label={
-          isFavourite ? "Удалено из избранного" : "Добавлено в избранное"
-        }
-      >
-        <Star size={20} />
-      </div>
+      {/* ---------- Tags ---------- */}
+      {tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <TagBadge key={tag} name={tag} />
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 };
@@ -733,19 +1070,17 @@ export default memo(LocationCard);
 
 * **Назначение:** Компонент отображения подробных данных локации (используется на `LocationDetailPage`).
 * **Взаимодействие:** Показывает большие изображение и все текстовые поля локации. Теги выводит через `TagBadge`. Кнопки `EditButton` и `DeleteButton` (связанные с тем же `id`) располагаются рядом. Адрес можно сделать кликабельным (ссылка на Google Maps), `sourceUrl` — внешний ресурс.
-**Актаульный код LocationDetail:**
+**Актаульный код LocationDetail.js:**
 ```js
 'use client';
+import { useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
-import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
-/**
- * Компонент подробной информации о локации
- * @param {{ location: import('@/hooks/useOneLocation').Location }} props
- */
 export default function LocationDetail({ location }) {
   const router = useRouter();
   const {
@@ -756,80 +1091,106 @@ export default function LocationDetail({ location }) {
     cost,
     source_url: sourceUrl,
     tags = [],
+    user_id: authorId,
   } = location;
 
-  // Фолбэк для некорректных URL
-  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
-    ? imgUrl
-    : 'https://cataas.com/cat/gif';
+  const imageSrc =
+    imgUrl && /^https?:\/\//.test(imgUrl)
+      ? imgUrl
+      : 'https://cataas.com/cat/gif';
+
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="space-y-6"
     >
-      <h1 className="text-3xl font-bold">{title}</h1>
-      <div className="relative h-60 w-full overflow-hidden rounded-lg shadow">
+      {/* 1. Изображение */}
+      <div className="relative aspect-video md:h-96 max-w-screen-md mx-auto overflow-hidden rounded-2xl bg-muted shadow-lg border-2 border-primary/20">
+        {!imgLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
+        )}
         <Image
           src={imageSrc}
           alt={title}
           fill
           sizes="(max-width: 768px) 100vw, 768px"
-          className="object-cover"
+          priority
+          className={cn(
+            'object-cover transition-opacity duration-500',
+            imgLoaded ? 'opacity-100' : 'opacity-0'
+          )}
+          onLoadingComplete={() => setImgLoaded(true)}
         />
       </div>
-
-      <section className="space-y-2 text-sm leading-relaxed">
-        {address && (
-          <p>
-            <strong>Адрес:&nbsp;</strong>
-            <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline"
-            >
-              {address}
-            </a>
-          </p>
+      {/* 2. Автор + теги + Заголовок */}
+      <header className="bg-primary/10 p-4 rounded-xl">
+        <h1 className="text-3xl font-bold text-primary-foreground break-words">
+          {title}
+        </h1>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap mt-4 gap-2">
+            {tags.map((tag) => (
+              <TagBadge key={tag} name={tag} />
+            ))}
+          </div>
         )}
-        {cost && (
-          <p>
-            <strong>Стоимость:&nbsp;</strong>
-            {cost}
-          </p>
-        )}
-        {sourceUrl && (
-          <p>
-            <strong>Источник:&nbsp;</strong>
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline break-all"
-            >
-              {sourceUrl}
-            </a>
-          </p>
-        )}
-      </section>
-
+        <span className="inline-block rounded-md bg-muted mt-4 px-3 py-1 text-sm font-semibold text-foreground select-none">
+        Автор: {authorId}
+        </span>
+      </header>
+      {/* 3. Описание */}
       {description && (
-        <p className="prose dark:prose-invert max-w-none">{description}</p>
+        <section className="bg-muted/20 p-4 rounded-xl">
+          <div className="prose max-w-none dark:prose-invert">
+            <p>{description}</p>
+          </div>
+        </section>
       )}
-
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => (
-            <TagBadge key={tag} name={tag} />
-          ))}
-        </div>
+      {/* 4. Дополнительная информация */}
+      {(address || cost || sourceUrl) && (
+        <section className="bg-card/60 p-4 rounded-xl ring-1 ring-border border-2 border-accent/30 backdrop-blur-md">
+          {address && (
+            <p className="text-sm leading-relaxed">
+              <strong className="font-medium">Адрес:&nbsp;</strong>
+              <a
+                href={`https://www.google.com/maps/search/${encodeURIComponent(
+                  address
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline break-words"
+              >
+                {address}
+              </a>
+            </p>
+          )}
+          {cost && (
+            <p className="text-sm">
+              <strong className="font-medium">Стоимость:&nbsp;</strong>
+              {cost}
+            </p>
+          )}
+          {sourceUrl && (
+            <p className="text-sm break-all">
+              <strong className="font-medium">Источник:&nbsp;</strong>
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                {sourceUrl}
+              </a>
+            </p>
+          )}
+        </section>
       )}
-
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => router.push(`/`)}>
+      {/*кнопка «Назад» */}
+      <div className="flex items-center gap-4 pt-4">
+        <Button variant="secondary" onClick={() => router.push('/')}>
           Назад
         </Button>
       </div>
@@ -1106,6 +1467,173 @@ export default function AttachImage({ control, name = "imageFile", rules, initia
   );
 }
 ```
+---
+### FormNavigation
+
+* **Назначение:** Нижняя навигация формы: «Назад» | «Далее»/«Сохранить».
+**Актаульный код FormNavigation.js:**
+```js
+'use client';
+import React from 'react';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+/* анимированная обёртка для shadcn‑кнопок */
+const MotionButton = motion(Button);
+
+export default function FormNavigation({
+  currentStep,
+  totalSteps,
+  onBack,
+  isSubmitting,
+  className = '',
+}) {
+  const isLast = currentStep === totalSteps;
+
+  return (
+    <div
+      className={cn(
+        /* mobile — fixed bottom bar */
+        'fixed bottom-0 left-0 z-40 w-full border-t border-border bg-card/90 backdrop-blur-md px-4 py-3',
+        /* desktop — как было */
+        'md:static md:border-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-0',
+        'flex justify-between',
+        className,
+      )}
+    >
+      <MotionButton
+        variant="outline"
+        type="button"
+        onClick={onBack}
+        aria-label="Вернуться"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        Назад
+      </MotionButton>
+
+      <MotionButton
+        type="submit"
+        disabled={isSubmitting}
+        aria-label={isLast ? 'Сохранить' : 'Следующий шаг'}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        {isLast
+          ? isSubmitting
+            ? 'Сохраняем…'
+            : 'Сохранить'
+          : 'Далее'}
+      </MotionButton>
+    </div>
+  );
+}
+```
+
+---
+### FormHeader
+
+* **Назначение:** Заголовок формы с Круговой индикатор прогресса с числовым отображением шага.
+**Актаульный код FormHeader.js:**
+```js
+'use client';
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
+
+function CircleProgress({ current, total, size = 48, stroke = 4 }) {
+  const radius = (size - stroke) / 2;
+  const circ = 2 * Math.PI * radius;
+  const progress = current / total;
+  const offset = circ * (1 - progress);
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      className="text-primary"
+      aria-hidden="true"
+    >
+      {/* фон */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke="currentColor"
+        strokeWidth={stroke}
+        opacity={0.15}
+        fill="none"
+      />
+      {/* прогресс — поворачиваем сам путь, а не весь svg */}
+      <motion.circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        stroke="currentColor"
+        strokeWidth={stroke}
+        strokeDasharray={circ}
+        initial={false}
+        animate={{ strokeDashoffset: offset }}
+        transition={{ duration: 0.45, ease: 'easeInOut' }}
+        strokeLinecap="round"
+        fill="none"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      {/* числовой счётчик — остаётся горизонтальным */}
+      <motion.text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize={size * 0.28}
+        fill="currentColor"
+        className="origin-center text-foreground select-none"
+        key={current}
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1.35 }}
+        exit={{ opacity: 0, scale: 0.8 }}
+        transition={{ duration: 0.3 }}
+      >
+        {`${current}/${total}`}
+      </motion.text>
+    </svg>
+  );
+}
+
+export default function FormHeader({
+  currentStep,
+  totalSteps,
+  title,
+  nextTitle,
+  className = '',
+}) {
+  return (
+    <header className={cn('mb-6 flex items-center gap-4', className)}>
+      <CircleProgress current={currentStep} total={totalSteps} />
+      <div className="flex flex-col overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.h2
+            key={title}
+            className="text-lg font-semibold leading-tight"
+            initial={{ y: 8, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -8, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {title}
+          </motion.h2>
+        </AnimatePresence>
+        {nextTitle && (
+          <span className="text-xs text-muted-foreground">
+            Далее:&nbsp;{nextTitle}
+          </span>
+        )}
+      </div>
+    </header>
+  );
+}
+```
 
 ---
 ### LocationForm
@@ -1115,21 +1643,24 @@ export default function AttachImage({ control, name = "imageFile", rules, initia
 **Актаульный код LocationForm:**
 ```js
 'use client';
-import React from 'react';
+import React, { useState, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useForm } from 'react-hook-form';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 import ChooseTag from '@/components/ChooseTag';
-import AttachImage from './AttachImage';
+import AttachImage from '@/components/AttachImage';
+import FormHeader from '@/components/FormHeader';
+import FormNavigation from '@/components/FormNavigation';
 import { useAddLocation } from '@/hooks/useAddLocation';
 import { useUpdateLocation } from '@/hooks/useUpdateLocation';
-import { useRouter } from 'next/navigation';
+import toast from 'react-hot-toast';
 
-/**
- * Форма создания или редактирования локации.
- * Если передан initialData.id — режим редактирования, иначе — создания.
- */
+const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
+import successAnimation from '@/public/saveSuccess.json';
+
 export default function LocationForm({ initialData = {}, onSuccess }) {
   const router = useRouter();
   const addLocation = useAddLocation();
@@ -1139,142 +1670,224 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
   const {
     control,
     register,
+    trigger,
     handleSubmit,
     formState: { errors },
   } = useForm({
     defaultValues: {
-      title:       initialData.title       || '',
+      title: initialData.title || '',
       description: initialData.description || '',
-      address:     initialData.address     || '',
-      cost:        initialData.cost        || '',
-      sourceUrl:   initialData.sourceUrl   || '',
-      tags:        initialData.tags        || [],
-      imageFile:   null,
+      address: initialData.address || '',
+      cost: initialData.cost || '',
+      sourceUrl: initialData.sourceUrl || '',
+      tags: initialData.tags || [],
+      imageFile: null,
     },
   });
 
+  const totalSteps = 2;
+  const [step, setStep] = useState(1);
+  // Показываем Lottie сразу при submit
+  const [showSuccess, setShowSuccess] = useState(false);
+  const savedIdRef = useRef(null);
+
   const onSubmit = (data) => {
-    // Собираем payload с file и старым imgUrl
     const payload = {
-      title:       data.title,
+      title: data.title,
       description: data.description,
-      address:     data.address,
-      cost:        data.cost,
-      sourceUrl:   data.sourceUrl,
-      imageFile:   data.imageFile,
-      imgUrl:      initialData.imgUrl   || null,
-      tags:        data.tags,
+      address: data.address,
+      cost: data.cost,
+      sourceUrl: data.sourceUrl,
+      imageFile: data.imageFile,
+      imgUrl: initialData.imgUrl || null,
+      tags: data.tags,
     };
 
     if (isEditMode) {
       updateLocation.mutate(
         { id: initialData.id, data: payload },
-        { onSuccess: () => onSuccess?.() }
+        {
+          onSuccess: () => {
+            savedIdRef.current = initialData.id;
+          },
+          onError: (err) => toast.error(err.message),
+        }
       );
     } else {
-      addLocation.mutate(
-        payload,
-        { onSuccess: (loc) => router.push(`/locations/${loc.id}`) }
-      );
+      addLocation.mutate(payload, {
+        onSuccess: (loc) => {
+          savedIdRef.current = loc.id;
+        },
+        onError: (err) => toast.error(err.message),
+      });
     }
   };
 
-  const isSubmitting = isEditMode
-    ? updateLocation.isLoading
-    : addLocation.isLoading;
+  const wrappedSubmit = handleSubmit(onSubmit);
+  const onFormSubmit = async (e) => {
+    e.preventDefault();
+
+    if (step < totalSteps) {
+      const fieldsToValidate = step === 1 ? ['title'] : [];
+      const valid = await trigger(fieldsToValidate);
+      if (valid) setStep((s) => s + 1);
+      return;
+    }
+    // Непосредственно сразу показываем Lottie
+    setShowSuccess(true);
+    wrappedSubmit();
+  };
+
+  const handleBack = () => {
+    if (step === 1) router.push('/');
+    else setStep((s) => s - 1);
+  };
+  // Экран Lottie-анимации
+  if (showSuccess) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24">
+        <Lottie
+          animationData={successAnimation}
+          loop={false}
+          autoplay
+          className="h-48 w-48"
+          onComplete={() => {
+            if (savedIdRef.current) {
+              router.push(`/locations/${savedIdRef.current}`);
+            } else {
+              router.push('/');
+            }
+            onSuccess?.();
+          }}
+        />
+        <p className="mt-6 text-lg font-semibold text-center">
+          Сохраняем…
+        </p>
+      </div>
+    );
+  }
+
+  const titles = ['Основная информация', 'Дополнительные детали'];
+  const nextTitles = ['Подробности', null];
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      {/* Заголовок */}
-      <div>
-        <label htmlFor="title" className="block text-sm font-medium">
-          Заголовок
-        </label>
-        <Input
-          id="title"
-          {...register('title', { required: 'Обязательное поле' })}
-          className="mt-1 w-full"
-        />
-        {errors.title && (
-          <p className="mt-1 text-sm text-red-600">
-            {errors.title.message}
-          </p>
+    <motion.form
+      onSubmit={onFormSubmit}
+      aria-label="Форма локации"
+      className="
+        w-full max-w-2xl mx-auto space-y-6
+        pb-32 md:pb-0
+      "
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <FormHeader
+        currentStep={step}
+        totalSteps={totalSteps}
+        title={titles[step - 1]}
+        nextTitle={nextTitles[step - 1]}
+      />
+
+      <AnimatePresence mode="wait" initial={false}>
+        {step === 1 && (
+          <motion.div
+            key="step1"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium">
+                Заголовок<span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="title"
+                {...register('title', { required: 'Обязательное поле' })}
+                className="mt-1 w-full"
+              />
+              {errors.title && (
+                <p className="mt-1 text-sm text-destructive-foreground">
+                  {errors.title.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="description" className="block text-sm font-medium">
+                Описание
+              </label>
+              <Textarea
+                id="description"
+                {...register('description')}
+                className="mt-1 w-full"
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium">Теги</label>
+              <ChooseTag control={control} name="tags" />
+            </div>
+          </motion.div>
         )}
-      </div>
 
-      {/* Описание */}
-      <div>
-        <label htmlFor="description" className="block text-sm font-medium">
-          Описание
-        </label>
-        <Textarea
-          id="description"
-          {...register('description')}
-          className="mt-1 w-full"
-          rows={4}
-        />
-      </div>
+        {step === 2 && (
+          <motion.div
+            key="step2"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            <div>
+              <label htmlFor="address" className="block text-sm font-medium">
+                Адрес
+              </label>
+              <Input id="address" {...register('address')} className="mt-1 w-full" />
+            </div>
 
-      {/* Адрес */}
-      <div>
-        <label htmlFor="address" className="block text-sm font-medium">
-          Адрес
-        </label>
-        <Input
-          id="address"
-          {...register('address')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label htmlFor="cost" className="block text-sm font-medium">
+                Стоимость
+              </label>
+              <Input id="cost" {...register('cost')} className="mt-1 w-full" />
+            </div>
 
-      {/* Стоимость */}
-      <div>
-        <label htmlFor="cost" className="block text-sm font-medium">
-          Стоимость
-        </label>
-        <Input
-          id="cost"
-          type="number"
-          {...register('cost')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label htmlFor="sourceUrl" className="block text-sm font-medium">
+                Ссылка на источник
+              </label>
+              <Input
+                id="sourceUrl"
+                {...register('sourceUrl')}
+                className="mt-1 w-full break-all"
+              />
+            </div>
 
-      {/* Ссылка на источник */}
-      <div>
-        <label htmlFor="sourceUrl" className="block text-sm font-medium">
-          Ссылка на источник
-        </label>
-        <Input
-          id="sourceUrl"
-          {...register('sourceUrl')}
-          className="mt-1 w-full"
-        />
-      </div>
+            <div>
+              <label className="block text-sm font-medium">Изображение</label>
+              <AttachImage
+                control={control}
+                name="imageFile"
+                initialUrl={initialData.imgUrl}
+                className="mt-1"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Выбор тегов */}
-      <div>
-        <label className="block text-sm font-medium">Теги</label>
-        <ChooseTag control={control} name="tags" />
-      </div>
-
-      {/* Картинка */}
-      <div>
-        <label className="block text-sm font-medium">Изображение</label>
-        <AttachImage control={control} name="imageFile" initialUrl={initialData.imgUrl} className="mt-1" />
-      </div>
-
-      {/* Кнопка */}
-      <Button type="submit" disabled={isSubmitting}>
-        {isEditMode
-          ? isSubmitting
-            ? 'Сохраняем…'
-            : 'Сохранить изменения'
-          : isSubmitting
-          ? 'Сохраняем…'
-          : 'Сохранить'}
-      </Button>
-    </form>
+      <FormNavigation
+        currentStep={step}
+        totalSteps={totalSteps}
+        onBack={handleBack}
+        isSubmitting={addLocation.isLoading || updateLocation.isLoading}
+      />
+    </motion.form>
   );
 }
 ```
@@ -1771,28 +2384,43 @@ import { persist } from 'zustand/middleware';
 export const useUIStore = create(
   persist(
     (set, get) => ({
+      /* ---------- состояние ---------- */
       searchQuery: '',
       selectedTags: [],
       showLoginModal: false,
+      /** Флаг «показывать только избранное» */
+      showOnlyFavourites: false,
+      /** Map {id: boolean} локально отмеченных избранных */
       favourites: {},
-
+      /* ---------- actions ---------- */
       setSearchQuery: (q) => set({ searchQuery: q }),
+
       toggleTag: (tag) =>
         set((s) => ({
           selectedTags: s.selectedTags.includes(tag)
             ? s.selectedTags.filter((t) => t !== tag)
             : [...s.selectedTags, tag],
         })),
+
       setLoginModal: (v) => set({ showLoginModal: v }),
-
+      /** Локальный optimistic‑тоггл для одной локации */
       toggleFavourite: (id) =>
-        set((s) => ({ favourites: { ...s.favourites, [id]: !s.favourites[id] } })),
-
+        set((s) => ({
+          favourites: { ...s.favourites, [id]: !s.favourites[id] },
+        })),
+      /** Гидратация списка избранных из Supabase */
       hydrateFavourites: (ids) =>
-        set(() => ({ favourites: Object.fromEntries(ids.map((id) => [id, true])) })),
+        set(() => ({
+          favourites: Object.fromEntries(ids.map((id) => [id, true])),
+        })),
+      /** Переключатель глобального фильтра «только избранное» */
+      toggleShowOnlyFavourites: () =>
+        set((s) => ({ showOnlyFavourites: !s.showOnlyFavourites })),
     }),
     {
       name: 'batumi-ui',
+      /** В localStorage храним только actual избранные,
+          остальные UI‑флаги не нужно персистить */
       partialize: (s) => ({ favourites: s.favourites }),
     }
   )
@@ -1914,7 +2542,7 @@ export default async function uploadImage(file, userId) {
 ### deleteImage
 
 * **Назначение:** Обеспечить корректное удаление ранее загруженного в Supabase Storage файла (изображения) по его публичному URL Предотвратить утечки устаревших или ненужных файлов, не нарушая основного потока выполнения
-### Взаимодействие
+* **Взаимодействие:**
 1. **Проверка URL**
    * Если `imageUrl` пустой (`null`, `undefined` или пустая строка) — функция сразу возвращает `void`.
 2. **Получение имени бакета**
@@ -1989,6 +2617,173 @@ export function useTags() {
     },
     staleTime: 5 * 60_000, // 5 минут
   });
+}
+```
+
+---
+* **Назначение:** Хук для получения и кеширования списка тегов.
+* **Функционал:** TagsPrefetcher — «ничего не рендерит», но при монтировании вызывает useTags() и тем самым прогревает кеш ['tags'].
+* **Использование:** `SearchBar` (фильтр)
+**Актаульный код TagsPrefetcher.js:**
+```js
+"use client";
+import { useTags } from "@/hooks/useTags";
+export default function TagsPrefetcher() {
+  useTags();
+  return null;
+}
+```
+
+---
+### useToggleFavourite
+
+* **Назначение:** Мутация‑переключатель «добавить / удалить в избранное» для текущего пользователя.
+* **Функционал:**
+  * Если локация не любима → `POST /rest/v1/favourites { user_id, location_id }`.
+  * Иначе → `DELETE /rest/v1/favourites?user_id=eq.{uid}&location_id=eq.{id}`.
+  * Оптимистично обновляет `favorites` в Zustand (`toggleFavorite(id)`) и инвалидирует `['favourites', userId]`, `['location', id]`, `['locations']`.
+* **Использование:** Вызывается внутри LocationCard при клике на иконку избранное⭐
+**Актаульный код useToggleFavourite.js:**
+```js
+'use client';
+import { useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import toast from 'react-hot-toast';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+/**
+ * useToggleFavourite(id) — возвращает функцию‑обработчик, которую нужно вызывать
+ * при клике на «звёздочку». Хук:
+ *  • Оптимистично переключает локальный флаг избранного в Zustand;
+ *  • POST /DELETE в таблицу favourites;
+ *  • Инвалидирует кеши favourites, location, locations;
+ *  • Если пользователь не авторизован — открывает LoginModal.
+ * @param {string} locationId UUID локации
+ * @returns {() => void} функция‑обработчик
+ */
+export function useToggleFavourite(locationId) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
+
+  const queryClient = useQueryClient();
+  const setLoginModal = useUIStore((s) => s.setLoginModal);
+  const favouritesMap  = useUIStore((s) => s.favourites);
+  const toggleFavouriteLocal = useUIStore((s) => s.toggleFavourite);
+  /** Реальный запрос к Supabase */
+  const mutation = useMutation({
+    mutationFn: async (isCurrentlyFav) => {
+      if (!userId) throw new Error('auth-required');
+
+      if (isCurrentlyFav) {
+        // удалить
+        const { error } = await supabase
+          .from('favourites')
+          .delete()
+          .eq('user_id', userId)
+          .eq('location_id', locationId);
+        if (error) throw error;
+      } else {
+        // добавить
+        const { error } = await supabase
+          .from('favourites')
+          .insert({ user_id: userId, location_id: locationId });
+        if (error) throw error;
+      }
+    },
+    // ---------- optimistic update ----------
+    onMutate: async () => {
+      const prevIsFav = Boolean(favouritesMap[locationId]);
+      toggleFavouriteLocal(locationId);                 // локальный optimistic
+      await queryClient.cancelQueries(['favourites', userId]);
+      return { prevIsFav };
+    },
+
+    onError: (err, _vars, ctx) => {
+      if (err?.message === 'auth-required') {
+        setLoginModal(true);                            // открыть модалку логина
+        return;
+      }
+      // откат optimistic‑переключения
+      toggleFavouriteLocal(locationId);
+      if (ctx?.prevIsFav !== undefined) {
+        queryClient.setQueryData(['favourites', userId], (old) => old);
+      }
+      toast.error(err.message || 'Не удалось обновить избранное');
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries(['favourites', userId]);
+      queryClient.invalidateQueries(['location', locationId]);
+      queryClient.invalidateQueries(['locations']);
+    },
+  });
+  /** Хэндлер, который будет привязан к onClick */
+  return useCallback(() => {
+    if (!userId) {
+      // не авторизован — просто показываем LoginModal
+      setLoginModal(true);
+      return;
+    }
+    mutation.mutate(Boolean(favouritesMap[locationId]));
+  }, [mutation, userId, favouritesMap, locationId, setLoginModal]);
+}
+```
+
+---
+### FavouriteFetcher
+
+* **Назначение:** Компонент `FavouriteFetcher` обеспечивает актуализацию избранных локаций пользователя при изменении состояния аутентификации.
+* **Функционал:**
+  * Получает ID текущего пользователя из хука `useAuth`.
+  * При наличии авторизованного пользователя запрашивает его избранные локации из таблицы `favourites` в Supabase.
+  * Гидратирует локальное хранилище Zustand, устанавливая флаги избранного для соответствующих `location_id`.
+  * При отсутствии пользователя (логауте) очищает локальное состояние и удаляет соответствующие кэш-запросы из React Query.
+**Актаульный код FavouriteFetcher.js:**
+```js
+'use client';
+import { useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+import { useUIStore } from '@/store/uiStore';
+
+export default function FavouriteFetcher() {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const queryClient = useQueryClient();
+  const hydrateFavourites = useUIStore((s) => s.hydrateFavourites);
+
+  useEffect(() => {
+    if (userId) {
+      // При логине — подгружаем current favourites
+      (async () => {
+        try {
+          const data = await queryClient.fetchQuery({
+            queryKey: ['favourites', userId],
+            queryFn: async () => {
+              const { data, error } = await supabase
+                .from('favourites')
+                .select('location_id')
+                .eq('user_id', userId);
+              if (error) throw error;
+              return data;
+            },
+          });
+          // гидратируем Zustand-мэп: { [locationId]: true }
+          hydrateFavourites(data.map((f) => f.location_id));
+        } catch (e) {
+          console.error('FavouriteFetcher:', e);
+        }
+      })();
+    } else {
+      // При логауте — сбрасываем локальное состояние и чистим кеш
+      hydrateFavourites([]);
+      queryClient.removeQueries({ queryKey: ['favourites'] });
+    }
+  }, [userId, queryClient, hydrateFavourites]);
+
+  return null;
 }
 ```
 

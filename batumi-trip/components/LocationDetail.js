@@ -1,14 +1,20 @@
-// components/LocationDetail.jsx
 'use client';
+import { useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
-import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 /**
- * Компонент подробной информации о локации
- * @param {{ location: import('@/hooks/useOneLocation').Location }} props
+ * LocationDetail – детализированное отображение локации.
+ * 5 секций, разделённых цветом:
+ * 1) Изображение;
+ * 2) Заголовок;
+ * 3) Теги;
+ * 4) Описание;
+ * 5) Дополнительная информация.
  */
 export default function LocationDetail({ location }) {
   const router = useRouter();
@@ -20,80 +26,111 @@ export default function LocationDetail({ location }) {
     cost,
     source_url: sourceUrl,
     tags = [],
+    user_id: authorId,
   } = location;
 
-  // Фолбэк для некорректных URL
-  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
-    ? imgUrl
-    : 'https://cataas.com/cat/gif';
+  const imageSrc =
+    imgUrl && /^https?:\/\//.test(imgUrl)
+      ? imgUrl
+      : 'https://cataas.com/cat/gif';
+
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   return (
     <motion.article
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: 'easeOut' }}
-      className="space-y-6"
     >
-      <h1 className="text-3xl font-bold">{title}</h1>
-      <div className="relative h-60 w-full overflow-hidden rounded-lg shadow">
+      {/* 1. Изображение */}
+      <div className="relative aspect-video md:h-96 max-w-screen-md mx-auto overflow-hidden rounded-2xl bg-muted shadow-lg border-2 border-primary/20">
+        {!imgLoaded && (
+          <div className="absolute inset-0 animate-pulse bg-muted-foreground/10" />
+        )}
         <Image
           src={imageSrc}
           alt={title}
           fill
           sizes="(max-width: 768px) 100vw, 768px"
-          className="object-cover"
+          priority
+          className={cn(
+            'object-cover transition-opacity duration-500',
+            imgLoaded ? 'opacity-100' : 'opacity-0'
+          )}
+          onLoadingComplete={() => setImgLoaded(true)}
         />
       </div>
 
-      <section className="space-y-2 text-sm leading-relaxed">
-        {address && (
-          <p>
-            <strong>Адрес:&nbsp;</strong>
-            <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(address)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline"
-            >
-              {address}
-            </a>
-          </p>
+      {/* 2. Автор + теги + Заголовок */}
+      <header className="bg-primary/10 p-4 rounded-xl">
+        <h1 className="text-3xl font-bold text-primary-foreground break-words">
+          {title}
+        </h1>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap mt-4 gap-2">
+            {tags.map((tag) => (
+              <TagBadge key={tag} name={tag} />
+            ))}
+          </div>
         )}
-        {cost && (
-          <p>
-            <strong>Стоимость:&nbsp;</strong>
-            {cost}
-          </p>
-        )}
-        {sourceUrl && (
-          <p>
-            <strong>Источник:&nbsp;</strong>
-            <a
-              href={sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline break-all"
-            >
-              {sourceUrl}
-            </a>
-          </p>
-        )}
-      </section>
+        <span className="inline-block rounded-md bg-muted mt-4 px-3 py-1 text-sm font-semibold text-foreground select-none">
+        Автор: {authorId}
+        </span>
+      </header>
 
+
+      {/* 3. Описание */}
       {description && (
-        <p className="prose dark:prose-invert max-w-none">{description}</p>
+        <section className="bg-muted/20 p-4 rounded-xl">
+          <div className="prose max-w-none dark:prose-invert">
+            <p>{description}</p>
+          </div>
+        </section>
       )}
 
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => (
-            <TagBadge key={tag} name={tag} />
-          ))}
-        </div>
+      {/* 4. Дополнительная информация */}
+      {(address || cost || sourceUrl) && (
+        <section className="bg-card/60 p-4 rounded-xl ring-1 ring-border border-2 border-accent/30 backdrop-blur-md">
+          {address && (
+            <p className="text-sm leading-relaxed">
+              <strong className="font-medium">Адрес:&nbsp;</strong>
+              <a
+                href={`https://www.google.com/maps/search/${encodeURIComponent(
+                  address
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline break-words"
+              >
+                {address}
+              </a>
+            </p>
+          )}
+          {cost && (
+            <p className="text-sm">
+              <strong className="font-medium">Стоимость:&nbsp;</strong>
+              {cost}
+            </p>
+          )}
+          {sourceUrl && (
+            <p className="text-sm break-all">
+              <strong className="font-medium">Источник:&nbsp;</strong>
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                {sourceUrl}
+              </a>
+            </p>
+          )}
+        </section>
       )}
 
-      <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => router.push(`/`)}>
+      {/*кнопка «Назад» */}
+      <div className="flex items-center gap-4 pt-4">
+        <Button variant="secondary" onClick={() => router.push('/')}>
           Назад
         </Button>
       </div>
