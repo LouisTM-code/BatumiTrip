@@ -134,7 +134,7 @@ export default function Header({ className }) {
             transition={{ duration: 0.2 }}
           >
             <div className="container mx-auto px-4 py-2 flex justify-end">
-              <SearchBar placeholder="Найти локацию..." />
+              <SearchBar placeholder="Давайте найдём что-то интересное 🧐" />
             </div>
           </motion.div>
         )}
