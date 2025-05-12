@@ -7,11 +7,11 @@ import { useTags } from "@/hooks/useTags";
 import TagBadge from "@/components/TagBadge";
 import { cn } from "@/lib/utils";
 /**
- * SearchBar — поле ввода + список тегов‑фильтров.
+ * SearchBar — поле ввода + список тегов-фильтров.
  *
- * • Данные ввода → Zustand (`searchQuery`) c debounce = 1 сек.  
- * • Теги грузятся через useTags() и отображаются под инпутом.  
- * • Клик по тегу переключает его в Zustand (`toggleTag` внутри TagBadge).  
+ * •  Данные ввода → Zustand (`searchQuery`) c debounce = 1 сек.
+ * •  Теги грузятся через useTags() и отображаются под инпутом.
+ * •  Клик по тегу переключает его в Zustand (`toggleTag` внутри TagBadge).
  *
  * @param placeholder – плейсхолдер строки поиска
  */
@@ -22,7 +22,6 @@ export default function SearchBar({
   /* ---------- глобальный поиск (Zustand) ---------- */
   const searchQuery = useUIStore((s) => s.searchQuery);
   const setSearchQuery = useUIStore((s) => s.setSearchQuery);
-
   /* ---------- локальное состояние ввода ---------- */
   const [value, setValue] = useState(searchQuery);
   useEffect(() => {
@@ -31,12 +30,10 @@ export default function SearchBar({
     }, 1000);
     return () => window.clearTimeout(id);
   }, [value, searchQuery, setSearchQuery]);
-
   /* если глобальное состояние изменилось извне — синхронизируем input */
   useEffect(() => {
     if (searchQuery !== value) setValue(searchQuery);
-  }, [searchQuery]);
-
+  }, [searchQuery, value]);
   /* ---------- список тегов ---------- */
   const { data: tags = [], isLoading, isError } = useTags();
 
@@ -57,10 +54,9 @@ export default function SearchBar({
         aria-label="Поле поиска локаций"
         className="w-full"
       />
-
       {/* блок тегов */}
       <AnimatePresence initial={false}>
-        {/** оставляем тег‑бар даже когда идёт загрузка, чтобы высота была стабильна */}
+        {/** оставляем тег-бар даже когда идёт загрузка, чтобы высота была стабильна */}
         <motion.div
           key="tag-bar"
           initial={{ height: 0, opacity: 0 }}
