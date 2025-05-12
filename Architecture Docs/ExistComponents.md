@@ -762,7 +762,6 @@ import { signIn, useSession } from "next-auth/react";
 import { useUIStore } from "@/store/uiStore";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -773,56 +772,62 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-
+/**
+ * LoginModal — модальное окно для входа по логину без пароля.
+ *
+ * ● При отсутствии авторизационной cookie открывается автоматически.  
+ * ● Фон под модалкой не затемняется, а размывается (backdrop‑blur).  
+ * ● Закрывается сразу после успешной авторизации.
+ */
 export default function LoginModal() {
-  const show = useUIStore((s) => s.showLoginModal);
-  const setShow = useUIStore((s) => s.setLoginModal);
-  const { status } = useSession();
-
-  const [error, setError] = useState("");
-  const [login, setLogin] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Закрыть при авторизации
+  const show         = useUIStore((s) => s.showLoginModal);
+  const setShow      = useUIStore((s) => s.setLoginModal);
+  const { status }   = useSession();
+  const [login, setLogin]           = useState("");
+  const [error, setError]           = useState("");
+  const [isSubmitting, setLoading]  = useState(false);
+  /* ---------- автопоказ модалки, если куки нет ---------- */
+  useEffect(() => {
+    if (status === "unauthenticated" && !show) setShow(true);
+  }, [status, show, setShow]);
+  /* ---------- закрытие после логина ---------- */
   useEffect(() => {
     if (status === "authenticated") setShow(false);
   }, [status, setShow]);
-
+  /* ---------- отправка формы ---------- */
   async function handleSubmit(e) {
     e.preventDefault();
     const trimmed = login.trim();
     const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/;
     if (!re.test(trimmed)) {
       setError(
-        "Неверное имя: только буквы латиницы и кириллицы, без цифр и спецсимволов, 3–32 символа."
-        );
+        "Неверное имя: 3–32 символа, только буквы латиницы или кириллицы."
+      );
       return;
     }
-    setIsSubmitting(true);
-    await signIn("credentials", {
-      username: trimmed,
-      redirect: false,
-    });
-    setIsSubmitting(false);
+    setLoading(true);
+    await signIn("credentials", { username: trimmed, redirect: false });
+    setLoading(false);
   }
-
+  /* ---------- рендер ---------- */
   return (
     <AnimatePresence>
       {show && (
         <Dialog open={show} onOpenChange={setShow}>
-          <DialogPortal>                                  {/* ① */}
-            <DialogOverlay />                              {/* ② */}
-            <DialogContent>                                {/* ③ */}
+          <DialogPortal>
+            {/* размытие вместо затемнения */}
+            <DialogOverlay className="fixed inset-0 bg-background/30 backdrop-blur-sm" />
+            <DialogContent>
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
-                className="bg-card text-card-foreground rounded-xl shadow-lg w-full max-w-sm overflow-hidden"
+                className="w-full max-w-sm overflow-hidden rounded-xl bg-card text-card-foreground shadow-lg"
               >
                 <DialogHeader className="px-6 pt-6">
                   <DialogTitle className="text-center text-xl font-semibold">
-                    Войти без пароля
+                    Войти без пароля
                   </DialogTitle>
                 </DialogHeader>
 
@@ -847,7 +852,7 @@ export default function LoginModal() {
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.3 }}
-                        className="overflow-hidden bg-red-100 border border-red-300 text-red-800 rounded p-2 text-sm"
+                        className="overflow-hidden rounded border border-red-300 bg-red-100 p-2 text-sm text-red-800"
                       >
                         {error}
                       </motion.div>
@@ -867,7 +872,6 @@ export default function LoginModal() {
       )}
     </AnimatePresence>
   );
-}
 ```
 
 ---
@@ -992,10 +996,10 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
 import { useRouter } from 'next/navigation';
-
 /**
- * Компонент подробной информации о локации
- * @param {{ location: import('@/hooks/useOneLocation').Location }} props
+ * Компонент подробной информации о локации.
+ * Отображает карточку локации с деталями и автором внизу.
+ * @param {{ location: import('@/hooks/useOneLocation').Location & { user_id: string }}} props
  */
 export default function LocationDetail({ location }) {
   const router = useRouter();
@@ -1007,12 +1011,13 @@ export default function LocationDetail({ location }) {
     cost,
     source_url: sourceUrl,
     tags = [],
+    user_id: authorId, // автор карточки
   } = location;
-
   // Фолбэк для некорректных URL
-  const imageSrc = imgUrl && /^https?:\/\//.test(imgUrl)
-    ? imgUrl
-    : 'https://cataas.com/cat/gif';
+  const imageSrc =
+    imgUrl && /^https?:\/\//.test(imgUrl)
+      ? imgUrl
+      : 'https://cataas.com/cat/gif';
 
   return (
     <motion.article
@@ -1021,7 +1026,11 @@ export default function LocationDetail({ location }) {
       transition={{ duration: 0.25, ease: 'easeOut' }}
       className="space-y-6"
     >
-      <h1 className="text-3xl font-bold">{title}</h1>
+      {/* ---------- Заголовок ---------- */}
+      <header className="space-y-2">
+        <h1 className="text-3xl font-bold break-words">{title}</h1>
+      </header>
+      {/* ---------- Изображение ---------- */}
       <div className="relative h-60 w-full overflow-hidden rounded-lg shadow">
         <Image
           src={imageSrc}
@@ -1031,16 +1040,18 @@ export default function LocationDetail({ location }) {
           className="object-cover"
         />
       </div>
-
+      {/* ---------- Ключевые поля ---------- */}
       <section className="space-y-2 text-sm leading-relaxed">
         {address && (
           <p>
             <strong>Адрес:&nbsp;</strong>
             <a
-              href={`https://www.google.com/maps/search/${encodeURIComponent(address)}`}
+              href={`https://www.google.com/maps/search/${encodeURIComponent(
+                address,
+              )}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary underline"
+              className="text-primary underline break-words"
             >
               {address}
             </a>
@@ -1066,11 +1077,11 @@ export default function LocationDetail({ location }) {
           </p>
         )}
       </section>
-
+      {/* ---------- Описание ---------- */}
       {description && (
         <p className="prose dark:prose-invert max-w-none">{description}</p>
       )}
-
+      {/* ---------- Теги ---------- */}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {tags.map((tag) => (
@@ -1078,9 +1089,24 @@ export default function LocationDetail({ location }) {
           ))}
         </div>
       )}
-
+      {/* ---------- Автор ---------- */}
+      <div className="flex items-center gap-2">
+        <span className="text-base font-medium text-muted-foreground">
+          Автор:
+        </span>
+        <span
+          className="
+            inline-block rounded-md bg-muted 
+            px-3 py-1 text-sm font-semibold text-foreground
+            select-none
+          "
+        >
+          {authorId}
+        </span>
+      </div>
+      {/* ---------- Навигация ---------- */}
       <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => router.push(`/`)}>
+        <Button variant="secondary" onClick={() => router.push('/')}>
           Назад
         </Button>
       </div>
