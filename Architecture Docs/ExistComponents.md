@@ -757,7 +757,7 @@ export default function AuthProvider({ children }) {
 **Актаульный код LoginModal.js:**
 ```js
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useUIStore } from "@/store/uiStore";
 import {
@@ -772,65 +772,90 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-/**
- * LoginModal — модальное окно для входа по логину без пароля.
- *
- * ● При отсутствии авторизационной cookie открывается автоматически.  
- * ● Фон под модалкой не затемняется, а размывается (backdrop‑blur).  
- * ● Закрывается сразу после успешной авторизации.
- */
+import dynamic from "next/dynamic";
+import animationData from "@/public/loginAnimation.json";
+// ---------- lazy‑загрузка Lottie ----------
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
+
 export default function LoginModal() {
-  const show         = useUIStore((s) => s.showLoginModal);
-  const setShow      = useUIStore((s) => s.setLoginModal);
-  const { status }   = useSession();
-  const [login, setLogin]           = useState("");
-  const [error, setError]           = useState("");
-  const [isSubmitting, setLoading]  = useState(false);
-  /* ---------- автопоказ модалки, если куки нет ---------- */
+  /* ----- глобальный UI‑state (Zustand) ----- */
+  const show = useUIStore((s) => s.showLoginModal);
+  const setShow = useUIStore((s) => s.setLoginModal);
+  /* ----- auth‑статус ----- */
+  const { status } = useSession();
+  /* ----- локальный стэйт формы ----- */
+  const [login, setLogin] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setSubmitting] = useState(false);
+  const [focused, setFocused] = useState(false);
+  /* ----- автопоказ, если пользователь не авторизован ----- */
   useEffect(() => {
     if (status === "unauthenticated" && !show) setShow(true);
   }, [status, show, setShow]);
-  /* ---------- закрытие после логина ---------- */
+  /* ----- закрыть МОДАЛКУ только ПОСЛЕ успешного логина ----- */
   useEffect(() => {
     if (status === "authenticated") setShow(false);
   }, [status, setShow]);
-  /* ---------- отправка формы ---------- */
-  async function handleSubmit(e) {
+  /* ----- валидация и отправка формы ----- */
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const trimmed = login.trim();
-    const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/;
+    const re = /^[A-Za-z\u0400-\u04FF]{3,32}$/; // 3–32 буквы (лат/кирилл)
     if (!re.test(trimmed)) {
-      setError(
-        "Неверное имя: 3–32 символа, только буквы латиницы или кириллицы."
-      );
+      setError("Неверное имя: 3–32 символа, только буквы.");
       return;
     }
-    setLoading(true);
+    setError("");
+    setSubmitting(true);
     await signIn("credentials", { username: trimmed, redirect: false });
-    setLoading(false);
-  }
-  /* ---------- рендер ---------- */
+    setSubmitting(false);
+  };
+  /* ----- фильтруем onOpenChange, запрещая закрывать окно ----- */
+  const handleOpenChange = useCallback(
+    /** @param {boolean} next */ (next) => {
+      if (next) setShow(true); // permit only attempts to OPEN, ignore close
+    },
+    [setShow]
+  );
+
   return (
     <AnimatePresence>
       {show && (
-        <Dialog open={show} onOpenChange={setShow}>
+        <Dialog open={show} onOpenChange={handleOpenChange}>
           <DialogPortal>
-            {/* размытие вместо затемнения */}
+            {/* размытый фон вместо затемнения */}
             <DialogOverlay className="fixed inset-0 bg-background/30 backdrop-blur-sm" />
-            <DialogContent>
+
+            <DialogContent
+              /* скрываем стандартный крестик внутри Content */
+              className="w-full max-w-sm overflow-hidden rounded-xl bg-card text-card-foreground shadow-lg [&>button]:hidden"
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
-                className="w-full max-w-sm overflow-hidden rounded-xl bg-card text-card-foreground shadow-lg"
+                transition={{ duration: 0.4 }}
               >
-                <DialogHeader className="px-6 pt-6">
-                  <DialogTitle className="text-center text-xl font-semibold">
-                    Войти без пароля
-                  </DialogTitle>
-                </DialogHeader>
+                {/* ---------- Header ---------- */}
+                <DialogHeader className="flex flex-col items-center px-6 pt-6">
+                  <motion.div
+                    initial={{ scale: 0.5, opacity: 0.1 }}
+                    animate={{ scale: 1.8, opacity: 1 }}
+                    transition={{ duration: 6 }}
+                    className="mb-4 h-24 w-24"
+                  >
+                    <Lottie animationData={animationData} loop autoplay />
+                  </motion.div>
 
+                  <DialogTitle className="text-center text-xl font-semibold">
+                    Авторизация
+                  </DialogTitle>
+                  <p className="mt-2 text-center text-sm italic text-muted-foreground">
+                    Бывали здесь раньше? Введите то же Имя. <br /> Оно связано с
+                    Вашими локациями.
+                  </p>
+                </DialogHeader>
+                {/* ---------- Form ---------- */}
                 <form
                   onSubmit={handleSubmit}
                   className="space-y-4 px-6 pb-6 pt-4"
@@ -838,8 +863,11 @@ export default function LoginModal() {
                 >
                   <Input
                     id="username"
-                    placeholder="Ваш логин"
+                    placeholder="Познакомимся?"
                     autoComplete="username"
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    className="peer"
                     value={login}
                     onChange={(e) => setLogin(e.target.value)}
                     required
@@ -872,6 +900,7 @@ export default function LoginModal() {
       )}
     </AnimatePresence>
   );
+}
 ```
 
 ---
