@@ -251,27 +251,47 @@ export default function LocationDetailPage() {
 **Актаульный код Header.js:**
 ```js
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import animationData from "@/public/userAnimation.json";
 import { useAuth } from "@/hooks/useAuth";
 import { useUIStore } from "@/store/uiStore";
 import { Button } from "@/components/ui/button";
 import LoginModal from "@/components/LoginModal";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, LogIn, Search } from "lucide-react";
+import { LogIn, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import SearchBar from "@/components/SearchBar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
   const [isSearchOpen, setSearchOpen] = useState(false);
+  const lottieRef = useRef(null);
+
   const handleLoginClick = () => setLoginModal(true);
   const toggleSearch = () => setSearchOpen((o) => !o);
+  /** Запускаем один цикл анимации при нажатии */
+  const playAnimation = () => {
+    if (lottieRef.current) {
+      lottieRef.current.goToAndPlay(0, true);
+    }
+  };
 
   return (
     <>
+      {/* ---------- Шапка ---------- */}
       <motion.header
         initial={{ y: -16, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -280,10 +300,10 @@ export default function Header({ className }) {
           "sticky top-0 z-30 flex w-full items-center justify-between px-4 py-3",
           "bg-primary/90 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/80",
           "shadow-md text-primary-foreground",
-          className
+          className,
         )}
       >
-        {/* Logo */}
+        {/* Логотип */}
         <Link href="/" className="flex items-center">
           <Image
             src="/logo.png"
@@ -294,31 +314,50 @@ export default function Header({ className }) {
           />
           <span className="sr-only">Batumi Trip</span>
         </Link>
-        {/* Search Icon */}
+        {/* Иконка поиска */}
         <button
           onClick={toggleSearch}
           aria-label="Поиск"
-          className="p-2 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded"
+          className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
         >
           <Search className="h-6 w-6" aria-hidden="true" />
         </button>
-        {/* Auth section */}
+        {/* ---------- Auth‑блок ---------- */}
         {user ? (
-          <div className="flex items-center gap-4">
-            <span className="select-none text-base font-semibold">
-              {user.id}
-            </span>
-            <Button
-              size="md"
-              variant="secondary"
-              onClick={() => signOut()}
-              aria-label="Выйти"
-              className="gap-2 px-4 py-2"
-            >
-              <LogOut className="h-5 w-5" aria-hidden="true" />
-              <span className="not-sr-only">Выйти</span>
-            </Button>
-          </div>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <div
+                role="button"
+                aria-label="Меню пользователя"
+                className="h-10 w-10 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                onClick={playAnimation}
+              >
+                <Lottie
+                  lottieRef={lottieRef}
+                  animationData={animationData}
+                  loop={false}
+                  autoplay={false}
+                  className="h-10 w-10"
+                />
+              </div>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuLabel className="block w-full text-center uppercase truncate select-none tracking-wide px-2 py-1">
+                {user.id}
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  signOut();
+                }}
+                className="text-destructive focus:text-destructive"
+              >
+                Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <Button
             size="md"
@@ -331,7 +370,7 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
-      {/* Search bar */}
+      {/* ---------- Поисковая строка ---------- */}
       <AnimatePresence>
         {isSearchOpen && (
           <motion.div
@@ -346,6 +385,7 @@ export default function Header({ className }) {
           </motion.div>
         )}
       </AnimatePresence>
+      {/* ---------- Модалка логина ---------- */}
       <LoginModal />
     </>
   );
