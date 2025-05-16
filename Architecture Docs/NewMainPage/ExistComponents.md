@@ -1,69 +1,6 @@
 # **Справочник компонентов и хуков BatumiTrip**
 
 > Этот документ является единым источником истины (source of truth) о текущей структуре и состоянии кода проекта Batumi Trip. Он служит опорой для AI‑генератора кода и всей команды разработчиков, предоставляя детальные описания существующих компонентов, хуков и утилит. Используя этот справочник, AI сможет корректно генерировать и модифицировать код, опираясь на актуальные реализации и внутренние соглашения по стилю.
----
-## Иерархия компонентов
-```text
-RootLayout
-├─ <html>
-│  └─ <body>
-│     ├─ Providers
-│     │  ├─ QueryClientProvider
-│     │  │  └─ ReactQueryDevtools   (только в development)
-│     │  ├─ AuthProvider
-│     │  │  └─ SessionProvider
-│     │  └─ ThemeProvider
-│     │     └─ NextThemesProvider
-│     ├─ FavouriteFetcher
-│     └─ {page children}
-│
-├─ / (LocationListPage)
-│  ├─ TagsPrefetcher
-│  ├─ Header
-│  │  ├─ Logo <Link>
-│  │  ├─ Search <button> ─┐
-│  │  │                   └─ SearchBar (открывается/закрывается)
-│  │  │                      ├─ Input
-│  │  │                      └─ TagBadge × N
-│  │  ├─ Login/Logout <Button>
-│  │  └─ LoginModal (вызывается из Zustand)
-│  ├─ LocationList
-│  │  ├─ (SkeletonCard × 6)                          – пока идёт начальная загрузка
-│  │  ├─ LocationCard × N
-│  │  │  ├─ <Image>
-│  │  │  ├─ TagBadge × M
-│  │  │  └─ Favourite <button>
-│  │  └─ Intersection‑observer <div>                 – триггер беск. прокрутки
-│  └─ AddLocationButton  → <Link href="/locations/new">
-│
-├─ /locations/new (AddLocationPage)
-│  └─ LocationForm
-│     ├─ Input (заголовок)
-│     ├─ Textarea (описание)
-│     ├─ Input (адрес, стоимость, sourceUrl)
-│     ├─ ChooseTag
-│     │  ├─ Inline <span> (существующие теги)
-│     │  └─ Input + Button (добавить новый тег)
-│     ├─ AttachImage
-│     │  ├─ <input type="file">
-│     │  └─ <img> (предпросмотр / X <button>)
-│     └─ Button (Сохранить)
-│
-├─ /locations/[id] (LocationDetailPage)
-│  │  (SkeletonCard — при загрузке)
-│  │  (Ошибка <div> — при isError)
-│  └─ {!isEditing
-│      ├─ LocationDetail
-│      │  ├─ <Image>
-│      │  ├─ TagBadge × M
-│      │  └─ Button (Назад)
-│      └─ [если автор] Edit & Delete <Button>
-│     : LocationForm (режим Edit) + Button (Отмена)
-│
-└─ API / служебные компоненты (не попадают в DOM‑дерево страниц)
-   ├─ route.js (NextAuth endpoint)
-   └─ SkeletonCard, TagBadge, etc. — вспомогательные UI‑элементы
-```
 
 ---
 ## Актуальный код и описание компонентов
@@ -95,11 +32,76 @@ export default function RootLayout({ children }) {
   );
 }
 ```
+---
+### DestinationHubPage (Новый Хаб - Будущая главная страница) `app/directions/page.js`
+
+* **Назначение:** главная страница-хаб, отображающая весь существующие направления, содержащие список локаций пользователя.
+* **Взаимодействие:** Загружает список направлений через `useDirections()`. Пока данные в пути ― показывает `SkeletonCard` и `Header`. После успешной загрузки выводит `DestinationCard` на каждое направление, либо дружелюбный call-to-action, если направлений нет. Сброс `activeDirection` при монтировании.
+**Актаульный код LocationListPage:**
+```js
+'use client';
+import { useEffect } from 'react';
+import Header from '@/components/Header';
+import TagsPrefetcher from '@/lib/TagsPrefetcher';
+import SkeletonCard from '@/components/SkeletonCard';
+import DestinationCard from '@/components/DestinationCard';
+import { useDirections } from '@/hooks/directionsHooks';
+import { useUIStore } from '@/store/uiStore';
+
+export default function DestinationHubPage() {
+  /* ---------- запрос направлений ---------- */
+  const {
+    data: directions = [],
+    isLoading,
+    isError,
+  } = useDirections();
+  /* ---------- сбрасываем активную ветку при входе в хаб ---------- */
+  const setActiveDirection = useUIStore((s) => s.setActiveDirection);
+  useEffect(() => {
+    setActiveDirection(null);
+  }, [setActiveDirection]);
+
+  return (
+    <main className="container mx-auto px-4 py-6 space-y-6">
+      {/* Prefetch словаря тегов (чтобы SearchBar был «тёплым») */}
+      <TagsPrefetcher />
+      {/* Глобальный Header */}
+      <Header />
+      {/* ---------------- Grid направлений (Mobile-First: 1 → sm:2) ---------------- */}
+      <div
+        id="destinationGrid"
+        className="grid grid-cols-1 sm:grid-cols-2 gap-4"
+      >
+        {/* 1. Загрузка — 4 скелетона */}
+        {isLoading &&
+          [...Array(4)].map((_, idx) => <SkeletonCard key={idx} />)}
+        {/* 2. Ошибка */}
+        {isError && (
+          <p className="col-span-full text-center text-destructive">
+            Не удалось загрузить направления.
+          </p>
+        )}
+        {/* 3. Данные получены и есть что показывать */}
+        {!isLoading && !isError && directions.length > 0 &&
+          directions.map((dir) => (
+            <DestinationCard key={dir.id} direction={dir} />
+          ))}
+        {/* 4. Данные получены, но пусто */}
+        {!isLoading && !isError && directions.length === 0 && (
+          <p className="col-span-full text-center text-muted-foreground">
+            У вас пока нет направлений. Нажмите «Добавить» и создайте первое!
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+```
 
 ---
-### LocationListPage (Главная страница списка)
+### LocationListPage (Старая главная страница списка)
 
-* **Назначение:** Страница-лендинг, отображающая весь интерфейс поиска и просмотра списка локаций текущего пользователя.
+* **Назначение:** Страница-лендинг, отображающая весь интерфейс поиска и просмотра списка локаций пользователей.
 * **Взаимодействие:** На странице располагаются `SearchBar`, `AddLocationButton` и `LocationList`. При загрузке инициируется хук `useLocations`, который подгружает первые локации. Пользователь может вводить текст поиска (сохраняется в Zustand), и запрос динамически фильтруется. Когда данных нет или пользователь только что вошел, `LocationList` показывает `SkeletonCard`.
 **Актаульный код LocationListPage:**
 ```js
@@ -386,6 +388,360 @@ export default function Header({ className }) {
   );
 }
 ```
+
+---
+### DestinationCard
+
+* **Назначение:** Карточка-превью для Турестических направлений
+* **Взаимодействие:** Показывает обложку (cover_url) и название. При клике ведёт во внутренний список локаций `/destination/{id}`. Обложка берётся из `direction.cover_url`; если нет — используется placeholder.
+**Актаульный код DestinationCard.js:**
+```js
+'use client';
+import React, { memo, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+/**
+ * @param {Object} props
+ * @param {{ id:string, title:string, cover_url?:string|null }} props.direction
+ */
+function DestinationCard({ direction }) {
+  const { id, title, cover_url: coverUrl } = direction;
+  const [imgLoaded, setImgLoaded] = useState(false);
+
+  const imageSrc = coverUrl && /^https?:\/\//.test(coverUrl)
+    ? coverUrl
+    : 'https://cataas.com/cat/gif';
+
+  return (
+    <motion.div
+      layout
+      whileHover={{ scale: 1.03 }}
+      className="group relative rounded-2xl bg-card text-card-foreground p-4 shadow transition-shadow"
+    >
+      <Link
+        href={`/destination/${id}`}
+        className="block no-underline hover:no-underline focus:no-underline"
+      >
+        {/* Обложка */}
+        <div className="relative h-40 w-full overflow-hidden rounded-lg">
+          <Image
+            src={imageSrc}
+            alt={title}
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className={cn(
+              'object-cover transition-opacity duration-500',
+              imgLoaded ? 'opacity-100' : 'opacity-0'
+            )}
+            onLoad={() => setImgLoaded(true)}
+            priority={false}
+          />
+          {!imgLoaded && (
+            <div className="absolute inset-0 animate-pulse bg-muted" />
+          )}
+        </div>
+        {/* Название */}
+        <h3 className="mt-4 text-lg font-semibold line-clamp-2">{title}</h3>
+      </Link>
+    </motion.div>
+  );
+}
+export default memo(DestinationCard);
+```
+
+---
+### AddDestinationButton
+
+* **Назначение:** Плавающая кнопка «Добавить направление».
+* **Взаимодействие:** по клику открывает `DestinationModal`. Cкрыта для гостей.
+**Актаульный код AddDestinationButton.js:**
+```js
+"use client";
+import { useState } from "react";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import DestinationModal from "@/components/DestinationModal";
+
+export default function AddDestinationButton({ className = "" }) {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <>
+      <Button
+        type="button"
+        aria-label="Добавить направление"
+        onClick={() => setOpen(true)}
+        className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        <span className="sr-only md:not-sr-only">Добавить направление</span>
+      </Button>
+
+      <DestinationModal isOpen={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+```
+
+---
+### DestinationModal
+
+* **Назначение:** Модалка для создания/редактирования Карточек туристических направлений.
+* **Взаимодействие:** Выпадающий список стран с флагами (`shadcn Select` + `react‑emoji‑flag`). Интеграция с `react‑hook‑form` через `useController`.
+**Актаульный код DestinationModal.js:**
+```js
+"use client";
+import React, { useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogOverlay,
+  DialogPortal,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import AttachImage from "@/components/AttachImage";
+import { useForm, useController } from "react-hook-form";
+import countries from "i18n-iso-countries";
+import ru from "i18n-iso-countries/langs/ru.json";
+import EmojiFlag from "react-emoji-flag";
+import { useAddDirection, useUpdateDirection } from "@/hooks/directionsHooks";
+import toast from "react-hot-toast";
+import { motion } from "framer-motion";
+import { useUIStore } from "@/store/uiStore";
+
+// ---------- Подготовка справочника стран ---------- //
+countries.registerLocale(ru);
+const countryOptions = Object.entries(
+  countries.getNames("ru", { select: "official" })
+)
+  .map(([code, name]) => ({ code, name }))
+  .sort((a, b) => a.name.localeCompare(b.name, "ru"));
+
+function CountrySelect({ control, name = "country", rules }) {
+  const {
+    field: { value, onChange },
+    fieldState: { error },
+  } = useController({ control, name, rules });
+  return (
+    <div className="space-y-1">
+      <Select value={value ?? ""} onValueChange={onChange}>
+        <SelectTrigger className="w-full" aria-label="Страна">
+          <SelectValue placeholder="Страна" />
+        </SelectTrigger>
+        <SelectContent className="max-h-64">
+          {countryOptions.map(({ code, name }) => (
+            <SelectItem key={code} value={code} className="flex items-center gap-2">
+              <EmojiFlag countryCode={code} style={{ fontSize: "1rem" }} />
+              <span>{name}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && (
+        <p className="text-sm text-destructive-foreground">{error.message}</p>
+      )}
+    </div>
+  );
+}
+
+export default function DestinationModal({
+  isOpen,
+  onClose,
+  initialData = null, // { id, title, country, city, cover_url }
+}) {
+  const isEditMode = Boolean(initialData?.id);
+  // ---------- react‑hook‑form ---------- //
+  const {
+    control,
+    register,
+    handleSubmit,
+    formState: { errors },
+    watch,
+  } = useForm({
+    defaultValues: {
+      title: initialData?.title ?? "",
+      country: initialData?.country ?? "",
+      city: initialData?.city ?? "",
+      coverFile: null,
+    },
+  });
+  // эскиз: сохраняем черновик в zustand (если понадобится recovery)
+  const setDraft = useUIStore((s) => s.setDirectionDraft);
+  useEffect(() => {
+    const subscription = watch((values) => setDraft(values));
+    return () => subscription.unsubscribe();
+  }, [watch, setDraft]);
+  // ---------- мутации ---------- //
+  const addMutation = useAddDirection();
+  const updateMutation = useUpdateDirection();
+  // ---------- submit ---------- //
+  const onSubmit = async (values) => {
+    if (isEditMode) {
+      updateMutation.mutate(
+        {
+          id: initialData.id,
+          data: {
+            title: values.title.trim(),
+            country: values.country,
+            city: values.city.trim() || null,
+            coverFile: values.coverFile,
+            oldCoverUrl: initialData.cover_url,
+          },
+        },
+        {
+          onSuccess: () => {
+            toast.success("Направление обновлено");
+            setDraft(null);
+            onClose();
+          },
+        }
+      );
+    } else {
+      addMutation.mutate(
+        {
+          title: values.title.trim(),
+          country: values.country,
+          city: values.city.trim() || null,
+          coverFile: values.coverFile, // required в useAddDirection
+        },
+        {
+          onSuccess: () => {
+            toast.success("Направление создано");
+            setDraft(null);
+            onClose();
+          },
+        }
+      );
+    }
+  };
+
+  const isSubmitting = addMutation.isLoading || updateMutation.isLoading;
+  // ---------- UI ---------- //
+  return (
+    <Dialog open={isOpen} onOpenChange={(v) => !v && onClose()}>
+      <DialogPortal>
+        <DialogOverlay className="fixed inset-0 bg-background/30 backdrop-blur-sm" />
+
+        <DialogContent className="w-full max-w-md overflow-y-auto rounded-xl bg-card text-card-foreground shadow-lg">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.25 }}
+          >
+            {/* ---------- Header ---------- */}
+            <DialogHeader>
+              <DialogTitle className="text-lg font-semibold">
+                {isEditMode ? "Редактировать направление" : "Создать направление"}
+              </DialogTitle>
+            </DialogHeader>
+            {/* ---------- Form ---------- */}
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="mt-4 space-y-4"
+              aria-label="Форма направления"
+            >
+              {/* Название */}
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium">
+                  Название<span className="text-destructive">*</span>
+                </label>
+                <Input
+                  id="title"
+                  {...register("title", { required: "Обязательное поле" })}
+                  className="mt-1 w-full"
+                />
+                {errors.title && (
+                  <p className="text-sm text-destructive-foreground mt-1">
+                    {errors.title.message}
+                  </p>
+                )}
+              </div>
+              {/* Страна */}
+              <div>
+                <label className="block text-sm font-medium">
+                  Страна<span className="text-destructive">*</span>
+                </label>
+                <CountrySelect
+                  control={control}
+                  name="country"
+                  rules={{ required: "Выберите страну" }}
+                />
+              </div>
+              {/* Город */}
+              <div>
+                <label htmlFor="city" className="block text-sm font-medium">
+                  Город
+                </label>
+                <Input
+                  id="city"
+                  {...register("city")}
+                  className="mt-1 w-full"
+                />
+              </div>
+              {/* Обложка */}
+              <div>
+                <label className="block text-sm font-medium">
+                  Обложка<span className="text-destructive">*</span>
+                </label>
+                <AttachImage
+                  control={control}
+                  name="coverFile"
+                  rules={
+                    isEditMode
+                      ? undefined
+                      : { required: "Изображение обязательно" }
+                  }
+                  initialUrl={initialData?.cover_url}
+                  className="mt-1"
+                />
+              </div>
+              {/* Footer */}
+              <DialogFooter className="pt-4 flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Отмена
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting
+                    ? isEditMode
+                      ? "Сохраняем…"
+                      : "Создаём…"
+                    : isEditMode
+                    ? "Сохранить"
+                    : "Создать"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </motion.div>
+        </DialogContent>
+      </DialogPortal>
+    </Dialog>
+  );
+}
+```
+
 ---
 ### SearchBar
 
@@ -1970,7 +2326,7 @@ export default function ThemeProvider({ children }) {
 ---
 ## Актуальный код и описание хуков / утилит
 
-### Хук useAuth.js
+### useAuth.js
 
 * **Назначение:** Кастомный хук для управления сессией пользователя.
 * **Функционал:** Использует NextAuth.js (`useSession`) или самостоятельно проверяет HTTP-only cookie `next-auth.session-token`. Предоставляет `user` (объект с `id`), флаг `isLoading` и методы `signIn(username)` и `signOut()`. При монтировании `useAuth` восстанавливает сессию из cookie и синхронизирует ее с глобальным состоянием (например, React Context или Zustand).
@@ -1990,6 +2346,235 @@ export function useAuth() {
   };
 }
 ```
+
+---
+### query-keys.ts
+
+* **Назначение:** Центральная точка для определения и типизации всех ключей кэша React Query в модуле «directions/locations». Обеспечивает единообразие и удобство рефакторинга при работе с query-keys.
+* **Функционал:** 
+  * Экспорт объекта qk с фабричными методами, возвращающими строго типизированные константные массивы для каждой группы данных:
+    * `directions()`
+    * `locations(dirId, search, tags)`
+    * `location(id)`
+    * `tags()`
+    * `favourites(userId)`
+  * Генерация сложных ключей с параметрами (dirId, search, tags, userId)
+  * Тип QueryKeys, объединяющий все возможные варианты ключей из qk, для использования в обобщённых хелперах и middleware.
+* **Использование:** В любых React-hook’ах и компонентах, работающих с данными “directions” и “locations”
+**Актаульный код query-keys.ts:**
+```ts
+export const qk = {
+  /** Flat list of destination branches that belong to the current user */
+  directions: () => ["directions"] as const,
+  /**
+   * Infinite, filtered list of locations inside a branch.
+   *
+   * @param dirId  Direction UUID or `null` for the legacy root list
+   * @param search Current search string from uiStore.searchQuery
+   * @param tags   Selected tag names from uiStore.selectedTags
+   */
+  locations: (
+    dirId: string | null,
+    search: string,
+    tags: string[],
+  ) =>
+    [
+      "locations",
+      {
+        dir: dirId ?? "__root__",
+        search,
+        tags,
+      },
+    ] as const,
+  /** Single location object */
+  location: (id: string) => ["location", id] as const,
+  /** Static dictionary of all tags */
+  tags: () => ["tags"] as const,
+  /** Favourites of a particular user (used for hydration & toggling) */
+  favourites: (userId: string) => ["favourites", userId] as const,
+} as const;
+
+export type QueryKeys = ReturnType<(typeof qk)[keyof typeof qk]>;
+```
+
+---
+### directionsHooks
+
+* **Назначение:** Реализация CRUD‑хуков для сущности «Direction» (направление)
+* **Функционал:** 
+  * `useDirections` — список веток текущего пользователя
+  * `useAddDirection` — создание ветки + загрузка cover в Storage
+  * `useUpdateDirection` — изменение названия / cover (с заменой файла)
+  * `useDeleteDirection` — каскадное удаление ветки и связанных локаций
+* **Использование:** Все хуки следуют паттернам существующих useAddLocation / useUpdateLocation и единым key‑policy из query‑keys.ts
+**Актаульный код directionsHooks.js:**
+```js
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
+import { supabase } from '@/lib/supabaseClient';
+import { qk } from '@/lib/query-keys';
+import toast from 'react-hot-toast';
+import uploadImage from '@/lib/uploadImage';
+import deleteImage from '@/lib/deleteImage';
+/** Список направлений текущего пользователя */
+export function useDirections() {
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id;
+
+  return useQuery({
+    queryKey: qk.directions(),
+    enabled: status !== 'loading',
+    staleTime: 60_000,
+    queryFn: async () => {
+      if (!userId) return [];
+      const { data, error } = await supabase
+        .from('directions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+/** Создать новое направление (RPC add_direction) */
+export function useAddDirection() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    /** @param {{ title:string, country:string, city?:string|null, coverFile:File }} payload */
+    mutationFn: async ({ title, country, city = null, coverFile }) => {
+      if (!userId) throw new Error('Пользователь не авторизован');
+      if (!coverFile) throw new Error('Обложка обязательна');
+
+      // 1) Загрузка изображения в Storage
+      const cover_url = await uploadImage(coverFile, userId);
+
+      // 2) RPC‑вставка
+      const { data, error } = await supabase.rpc('add_direction', {
+        p_user_id: userId,
+        p_title: title,
+        p_country: country,
+        p_city: city,
+        p_cover_url: cover_url,
+      });
+      if (error) {
+        // Откат загруженного файла при ошибке
+        await deleteImage(cover_url).catch(() => {});
+        throw error;
+      }
+      return data;
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries(qk.directions());
+      toast.success('Направление создано');
+    },
+
+    onError: (err) => {
+      toast.error(err.message || 'Не удалось создать направление');
+    },
+  });
+}
+/** Обновить существующее направление (RPC update_direction) */
+export function useUpdateDirection() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    /**
+     * @param {{ id:string, data:{ title?:string, country?:string, city?:string|null, coverFile?:File|null, oldCoverUrl?:string|null } }} vars
+     */
+    mutationFn: async ({ id, data }) => {
+      if (!userId) throw new Error('Пользователь не авторизован');
+
+      const { title, country, city, coverFile, oldCoverUrl } = data;
+      let cover_url = oldCoverUrl ?? null;
+      const isCoverChanged = Boolean(coverFile);
+
+      if (isCoverChanged) {
+        cover_url = await uploadImage(coverFile, userId);
+      }
+
+      const { data: updated, error } = await supabase.rpc('update_direction', {
+        p_user_id: userId,
+        p_direction_id: id,
+        p_title: title,
+        p_country: country,
+        p_city: city,
+        p_cover_url: cover_url,
+      });
+
+      if (error) {
+        if (isCoverChanged) await deleteImage(cover_url).catch(() => {});
+        throw error;
+      }
+
+      // Удаляем старый cover после успешного обновления
+      if (isCoverChanged && oldCoverUrl && oldCoverUrl !== cover_url) {
+        deleteImage(oldCoverUrl).catch(() => {});
+      }
+
+      return updated;
+    },
+
+    onSuccess: () => {
+      queryClient.invalidateQueries(qk.directions());
+      toast.success('Направление обновлено');
+    },
+
+    onError: (err) => toast.error(err.message || 'Ошибка при обновлении направления'),
+  });
+}
+/** Удалить направление + каскад локаций (RPC delete_direction) */
+export function useDeleteDirection() {
+  const { data: session } = useSession();
+  const userId = session?.user?.id;
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    /** @param {{ id:string, coverUrl?:string|null }} vars */
+    mutationFn: async ({ id, coverUrl }) => {
+      if (!userId) throw new Error('Пользователь не авторизован');
+
+      const { error } = await supabase.rpc('delete_direction', {
+        p_user_id: userId,
+        p_direction_id: id,
+      });
+      if (error) throw error;
+      // cover‑файл больше не нужен
+      if (coverUrl) deleteImage(coverUrl).catch(() => {});
+
+      return { id };
+    },
+    // ----- optimistic removal из списка -----
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries(qk.directions());
+      const prev = queryClient.getQueryData(qk.directions());
+      queryClient.setQueryData(qk.directions(), (old = []) =>
+        old.filter((d) => d.id !== id),
+      );
+      return { prev };
+    },
+
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(qk.directions(), ctx.prev);
+      toast.error(err.message || 'Не удалось удалить направление');
+    },
+
+    onSuccess: () => {
+      // directions + все кэши локаций, связанные с веткой
+      queryClient.invalidateQueries(qk.directions());
+      queryClient.removeQueries({ queryKey: ['locations'], exact: false });
+      toast.success('Направление удалено');
+    },
+  });
+}
+```
+
 ---
 ### useAddLocation
 
@@ -1999,7 +2584,7 @@ export function useAuth() {
   * `addLocationFn` загружает изображение в Supabase Storage (если файл присутствует), получает `publicUrl`, затем `POST /rest/v1/locations` c телом `{ …payload, image_url: publicUrl }`.
   * В `onSuccess` инвалидируются `['locations']` и `['tags']`.
 * **Использование:** `LocationForm` в `AddLocationPage`
-**Актаульный код useAddLocation:**
+**Актаульный код useAddLocation.js:**
 ```js
 'use client';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -2368,14 +2953,8 @@ export function useOneLocation(id) {
 ---
 ### Глобальное состояние (Zustand и Context)
 
-* **Zustand Store:** Управляет локальным UI-состоянием, не относящимся к серверу. Например:
-
-  * `searchQuery` — текущий текст поиска (из `SearchBar`)
-  * `selectedTags: string[]` — массив выбранных тегов для фильтрации
-  * `showLoginModal: boolean` — флаг отображения `LoginModal`
-  * `favorites: string[]` — список ID отмеченных локаций (из задачи «избранное»; может сохраняться в localStorage)
-  * Методы `setSearchQuery`, `toggleTag`, `setLoginModal`, `toggleFavorite` и т.д.
-* **Context API:** Используется для предоставления глобальных опций, например `ThemeContext` (светлая/темная тема) или `LocaleContext` (язык интерфейса). Обычно оборачивается в `Layout`.
+* **Zustand Store:** Управляет локальным UI-состоянием, не относящимся к серверу.
+* **Context API:** Используется для предоставления глобальных опций. Обычно оборачивается в `Layout`.
 **Актаульный код uiStore.js:**
 ```js
 import { create } from 'zustand';
@@ -2384,15 +2963,25 @@ import { persist } from 'zustand/middleware';
 export const useUIStore = create(
   persist(
     (set, get) => ({
-      /* ---------- состояние ---------- */
+      // --- Navigation & Directions ---
+      /** UUID активного направления или null, когда пользователь находится в Hub */
+      activeDirectionId: null,
+      /** Временный черновик формы DestinationModal (create/edit) */
+      directionFormDraft: null,
+      // --- Search & Filters ---
       searchQuery: '',
       selectedTags: [],
       showLoginModal: false,
       /** Флаг «показывать только избранное» */
       showOnlyFavourites: false,
-      /** Map {id: boolean} локально отмеченных избранных */
+      /** Map {id: boolean} локально отмеченных избранных */
       favourites: {},
       /* ---------- actions ---------- */
+      /** Установить активное направление; null — для Hub */
+      setActiveDirection: (id) => set({ activeDirectionId: id }),
+      /** Обновить / очистить черновик формы направления */
+      setDirectionDraft: (draft) => set({ directionFormDraft: draft }),
+
       setSearchQuery: (q) => set({ searchQuery: q }),
 
       toggleTag: (tag) =>
@@ -2403,7 +2992,7 @@ export const useUIStore = create(
         })),
 
       setLoginModal: (v) => set({ showLoginModal: v }),
-      /** Локальный optimistic‑тоггл для одной локации */
+      /** Локальный optimistic-тоггл для одной локации */
       toggleFavourite: (id) =>
         set((s) => ({
           favourites: { ...s.favourites, [id]: !s.favourites[id] },
@@ -2413,14 +3002,15 @@ export const useUIStore = create(
         set(() => ({
           favourites: Object.fromEntries(ids.map((id) => [id, true])),
         })),
-      /** Переключатель глобального фильтра «только избранное» */
+      /** Переключатель глобального фильтра «только избранное» */
       toggleShowOnlyFavourites: () =>
         set((s) => ({ showOnlyFavourites: !s.showOnlyFavourites })),
     }),
     {
       name: 'batumi-ui',
+      version: 2, // bump after adding directions fields
       /** В localStorage храним только actual избранные,
-          остальные UI‑флаги не нужно персистить */
+          остальные UI-флаги не нужно персистить */
       partialize: (s) => ({ favourites: s.favourites }),
     }
   )

@@ -121,28 +121,9 @@ CREATE TABLE IF NOT EXISTS directions (
 ALTER TABLE locations
   ADD COLUMN IF NOT EXISTS direction_id UUID REFERENCES directions(id) ON DELETE CASCADE;
 
--- 3. stubs (если ещё не было)
-CREATE TABLE IF NOT EXISTS tags (
-  id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name VARCHAR(50) UNIQUE NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS locations_tags (
-  location_id UUID REFERENCES locations(id) ON DELETE CASCADE,
-  tag_id      UUID REFERENCES tags(id)      ON DELETE CASCADE,
-  PRIMARY KEY (location_id, tag_id)
-);
-
-CREATE TABLE IF NOT EXISTS favourites (
-  user_id     VARCHAR(50) REFERENCES users(id) ON DELETE CASCADE,
-  location_id UUID        REFERENCES locations(id) ON DELETE CASCADE,
-  created_at  TIMESTAMP WITH TIME ZONE DEFAULT now(),
-  PRIMARY KEY (user_id, location_id)
-);
-
 -- Индекс для Infinite Scroll
 CREATE INDEX IF NOT EXISTS locations_direction_created_at_idx
-  ON locations (direction_id, created_at DESC);
+  ON public.locations (direction_id, created_at DESC);
 
 -- Отключаем RLS (контроль через RPC)
 ALTER TABLE directions     DISABLE ROW LEVEL SECURITY;
@@ -156,42 +137,44 @@ ALTER TABLE favourites     DISABLE ROW LEVEL SECURITY;
 ## 6. RPC‑процедуры
 
 ```sql
--- 1. Добавление направления
 CREATE OR REPLACE FUNCTION public.add_direction(
   p_user_id    TEXT,
   p_title      TEXT,
   p_country    TEXT,
-  p_city       TEXT    DEFAULT NULL,
-  p_cover_url  TEXT    DEFAULT NULL
+  p_city       TEXT DEFAULT NULL,
+  p_cover_url  TEXT DEFAULT NULL
 )
-RETURNS directions
+RETURNS public.directions
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  rec public.directions;
 BEGIN
-  RETURN QUERY
-  INSERT INTO directions (user_id, title, country, city, cover_url, created_at, updated_at)
+  INSERT INTO public.directions (user_id, title, country, city, cover_url, created_at, updated_at)
   VALUES (p_user_id, p_title, p_country, p_city, p_cover_url, now(), now())
-  RETURNING *;
+  RETURNING * INTO rec;
+  RETURN rec;
 END;
 $$;
 
--- 2. Обновление направления
+-- 7.2 update_direction: patch an existing direction
 CREATE OR REPLACE FUNCTION public.update_direction(
   p_user_id      TEXT,
   p_direction_id UUID,
-  p_title        TEXT    DEFAULT NULL,
-  p_country      TEXT    DEFAULT NULL,
-  p_city         TEXT    DEFAULT NULL,
-  p_cover_url    TEXT    DEFAULT NULL
+  p_title        TEXT DEFAULT NULL,
+  p_country      TEXT DEFAULT NULL,
+  p_city         TEXT DEFAULT NULL,
+  p_cover_url    TEXT DEFAULT NULL
 )
-RETURNS directions
+RETURNS public.directions
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+  rec public.directions;
 BEGIN
-  RETURN QUERY
-  UPDATE directions
+  UPDATE public.directions
   SET
     title      = COALESCE(p_title, title),
     country    = COALESCE(p_country, country),
@@ -200,27 +183,26 @@ BEGIN
     updated_at = now()
   WHERE id = p_direction_id
     AND user_id = p_user_id
-  RETURNING *;
+  RETURNING * INTO rec;
+  RETURN rec;
 END;
 $$;
 
--- 3. Каскадное удаление направления вместе с локациями
+-- 7.3 delete_direction: cascade-delete a direction and its locations
 CREATE OR REPLACE FUNCTION public.delete_direction(
   p_user_id      TEXT,
   p_direction_id UUID
 )
-RETURNS VOID
+RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 BEGIN
-  -- Сначала удаляем все локации в этой ветке
-  DELETE FROM locations
+  DELETE FROM public.locations
   WHERE direction_id = p_direction_id
     AND user_id = p_user_id;
 
-  -- Затем само направление
-  DELETE FROM directions
+  DELETE FROM public.directions
   WHERE id = p_direction_id
     AND user_id = p_user_id;
 END;
