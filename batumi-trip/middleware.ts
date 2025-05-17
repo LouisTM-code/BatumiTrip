@@ -5,13 +5,21 @@ import { getToken } from 'next-auth/jwt';
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // 1) Разрешаем доступ к публичным маршрутам и статике
+  // ——— Legacy-редирект: все /locations/{rest} → /destination/__root__/locations/{rest}
+  const legacyMatch = pathname.match(/^\/locations\/(.*)$/);
+  if (legacyMatch) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = `/destination/__root__/locations/${legacyMatch[1]}`;
+    return NextResponse.redirect(redirectUrl, 302);
+  }
+
+  // 1) Пропускаем публичные маршруты и статику
   if (
-    pathname.startsWith('/api/auth') ||  // NextAuth endpoints
-    pathname === '/' ||                  // главная страница (login modal)
+    pathname.startsWith('/api/auth') ||  // эндпоинты NextAuth
+    pathname === '/' ||                  // главная (login modal)
     pathname.startsWith('/_next') ||     // внутренние файлы Next.js
     pathname.startsWith('/static') ||    // статика
-    pathname.includes('.')                // файлы типа *.css, *.js, *.png и т.п.
+    pathname.includes('.')               // файлы типа *.css, *.js, *.png и т.п.
   ) {
     return NextResponse.next();
   }
@@ -19,7 +27,7 @@ export async function middleware(req: NextRequest) {
   // 2) Проверяем наличие валидного JWT в HTTP-only cookie
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
 
-  // 3) Если токена нет — редирект на главную (modal login)
+  // 3) Если токена нет — редирект на главную (login modal)
   if (!token) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = '/';
@@ -30,7 +38,10 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// Применять middleware только к приватным страницам `/locations/*`
+// Применяем middleware к legacy-маршрутам /locations/*
 export const config = {
-  matcher: ['/locations/new'],
+  matcher: [
+    '/locations/new',       // существующее правило (create)
+    '/locations/(.*)',      // новое правило для всех legacy-deep-links
+  ],
 };

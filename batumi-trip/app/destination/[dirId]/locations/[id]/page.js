@@ -48,7 +48,7 @@ export default function LocationDetailPage() {
       { id, imageUrl: location.imgUrl },
       {
         onSuccess: () => {
-          router.push('/');
+          router.push(`/destination/${location.direction_id}`);
         },
       },
     );

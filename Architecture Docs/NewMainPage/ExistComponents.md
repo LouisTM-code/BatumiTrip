@@ -33,11 +33,11 @@ export default function RootLayout({ children }) {
 }
 ```
 ---
-### DestinationHubPage (Новый Хаб - Будущая главная страница) `app/directions/page.js`
+### DestinationHubPage `app/page.js`
 
 * **Назначение:** главная страница-хаб, отображающая весь существующие направления, содержащие список локаций пользователя.
 * **Взаимодействие:** Загружает список направлений через `useDirections()`. Пока данные в пути ― показывает `SkeletonCard` и `Header`. После успешной загрузки выводит `DestinationCard` на каждое направление, либо дружелюбный call-to-action, если направлений нет. Сброс `activeDirection` при монтировании.
-**Актаульный код LocationListPage:**
+**Актаульный код DestinationHubPage:**
 ```js
 'use client';
 import { useEffect } from 'react';
@@ -45,17 +45,18 @@ import Header from '@/components/Header';
 import TagsPrefetcher from '@/lib/TagsPrefetcher';
 import SkeletonCard from '@/components/SkeletonCard';
 import DestinationCard from '@/components/DestinationCard';
+import AddDestinationButton from '@/components/AddDestinationButton';
 import { useDirections } from '@/hooks/directionsHooks';
 import { useUIStore } from '@/store/uiStore';
 
 export default function DestinationHubPage() {
-  /* ---------- запрос направлений ---------- */
+  // Получаем список направлений
   const {
     data: directions = [],
     isLoading,
     isError,
   } = useDirections();
-  /* ---------- сбрасываем активную ветку при входе в хаб ---------- */
+  // Сбрасываем активную ветку в Zustand при входе на хаб
   const setActiveDirection = useUIStore((s) => s.setActiveDirection);
   useEffect(() => {
     setActiveDirection(null);
@@ -63,56 +64,68 @@ export default function DestinationHubPage() {
 
   return (
     <main className="container mx-auto px-4 py-6 space-y-6">
-      {/* Prefetch словаря тегов (чтобы SearchBar был «тёплым») */}
+      {/* Префетчим теги для SearchBar */}
       <TagsPrefetcher />
-      {/* Глобальный Header */}
       <Header />
-      {/* ---------------- Grid направлений (Mobile-First: 1 → sm:2) ---------------- */}
-      <div
-        id="destinationGrid"
-        className="grid grid-cols-1 sm:grid-cols-2 gap-4"
-      >
-        {/* 1. Загрузка — 4 скелетона */}
+      {/* Сетка направлений: Mobile First — 1 колонка, sm+: 2 */}
+      <div id="destinationGrid" className="grid grid-cols-1 gap-4">
+        {/* Во время загрузки показываем 4 скелетона */}
         {isLoading &&
-          [...Array(4)].map((_, idx) => <SkeletonCard key={idx} />)}
-        {/* 2. Ошибка */}
+          Array.from({ length: 4 }).map((_, idx) => (
+            <SkeletonCard key={idx} />
+          ))}
+        {/* Ошибка загрузки */}
         {isError && (
           <p className="col-span-full text-center text-destructive">
             Не удалось загрузить направления.
           </p>
         )}
-        {/* 3. Данные получены и есть что показывать */}
-        {!isLoading && !isError && directions.length > 0 &&
+        {/* Данные получены */}
+        {!isLoading &&
+          !isError &&
           directions.map((dir) => (
             <DestinationCard key={dir.id} direction={dir} />
           ))}
-        {/* 4. Данные получены, но пусто */}
+        {/* Пустой список */}
         {!isLoading && !isError && directions.length === 0 && (
           <p className="col-span-full text-center text-muted-foreground">
             У вас пока нет направлений. Нажмите «Добавить» и создайте первое!
           </p>
         )}
       </div>
+      {/* Плавающая кнопка «Добавить направление» */}
+      <AddDestinationButton />
     </main>
   );
 }
 ```
 
 ---
-### LocationListPage (Старая главная страница списка)
+### LocationListPage `app/destination/[dirId]/page.js`
 
 * **Назначение:** Страница-лендинг, отображающая весь интерфейс поиска и просмотра списка локаций пользователей.
-* **Взаимодействие:** На странице располагаются `SearchBar`, `AddLocationButton` и `LocationList`. При загрузке инициируется хук `useLocations`, который подгружает первые локации. Пользователь может вводить текст поиска (сохраняется в Zustand), и запрос динамически фильтруется. Когда данных нет или пользователь только что вошел, `LocationList` показывает `SkeletonCard`.
+* **Взаимодействие:** На странице располагаются `SearchBar`, `AddLocationButton` и `LocationList`. При загрузке инициируется хук `useLocations`, который подгружает первые локации. Пользователь может вводить текст поиска (сохраняется в Zustand), и запрос динамически фильтруется. Когда данных нет или пользователь только что вошел, `LocationList` показывает `SkeletonCard`. Читает dirId из params. Выставляет uiStore.activeDirectionId.
 **Актаульный код LocationListPage:**
 ```js
-// app/page.js  (роут /)
-import LocationList from '@/components/LocationList';
-import AddLocationButton from '@/components/AddLocationButton'
+'use client';
+import { useEffect } from 'react';
+import { useParams } from 'next/navigation';
 import Header from '@/components/Header';
 import TagsPrefetcher from '@/lib/TagsPrefetcher';
+import LocationList from '@/components/LocationList';
+import AddLocationButton from '@/components/AddLocationButton';
 import FavouriteFilterButton from '@/components/FavouriteFilterButton';
+import { useUIStore } from '@/store/uiStore';
 
-export default function LocationListPage() {
+export default function LocationListPageWrapper() {
+  const { dirId } = useParams();
+  const setActiveDirection = useUIStore((s) => s.setActiveDirection);
+  /* выставляем активную ветку и сбрасываем при размонтировании */
+  useEffect(() => {
+    setActiveDirection(dirId || null);
+    return () => setActiveDirection(null);
+  }, [dirId, setActiveDirection]);
+
   return (
     <main className="container mx-auto px-4 py-6 space-y-6">
       <TagsPrefetcher />
@@ -126,19 +139,33 @@ export default function LocationListPage() {
 ```
 
 ---
-### AddLocationPage - `app/locations/new/page.js`
+### AddLocationPage - `app/destination/[dirId]/locations/new/page.js`
 
 * **Назначение:** Страница с формой создания новой локации.
 * **Взаимодействие:** Содержит `LocationForm` без `initialData`. Сабмит формы вызывает `useAddLocation().mutate(data)`, а при успехе перенаправляет на детальную страницу новой локации.
 **Актаульный код AddLocationPage:**
 ```js
 'use client';
-import React from 'react';
+import { useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import Header from '@/components/Header';
 import LocationForm from '@/components/LocationForm';
+import { useUIStore } from '@/store/uiStore';
 
 export default function AddLocationPage() {
+  const { dirId } = useParams();
+  const setActiveDirection = useUIStore((s) => s.setActiveDirection);
+  // Устанавливаем activeDirectionId при монтировании и сбрасываем при размонтировании
+  useEffect(() => {
+    setActiveDirection(dirId || null);
+    return () => {
+      setActiveDirection(null);
+    };
+  }, [dirId, setActiveDirection]);
+
   return (
     <main className="container mx-auto px-4 py-6">
+      <Header />
       <LocationForm />
     </main>
   );
@@ -393,7 +420,7 @@ export default function Header({ className }) {
 ### DestinationCard
 
 * **Назначение:** Карточка-превью для Турестических направлений
-* **Взаимодействие:** Показывает обложку (cover_url) и название. При клике ведёт во внутренний список локаций `/destination/{id}`. Обложка берётся из `direction.cover_url`; если нет — используется placeholder.
+* **Взаимодействие:** Показывает обложку (cover_url) и название. При клике ведёт во внутренний список локаций `/destination/{id}`. Обложка берётся из `direction.cover_url`; если нет — используется placeholder. 
 **Актаульный код DestinationCard.js:**
 ```js
 'use client';
@@ -402,53 +429,197 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useDeleteDirection } from '@/hooks/directionsHooks';
+import DestinationModal from '@/components/DestinationModal';
+import LocationCount from '@/components/LocationCount';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { MoreVertical } from 'lucide-react';
+import EmojiFlag from 'react-emoji-flag';
+import { useLocationForCard } from '@/hooks/useLocationForCard';
+import RandomLocation from '@/components/RandomLocation';
 /**
- * @param {Object} props
- * @param {{ id:string, title:string, cover_url?:string|null }} props.direction
+ * @param {{
+ *   id: string;
+ *   title: string;
+ *   cover_url?: string|null;
+ *   user_id: string;
+ *   country: string;        // ISO-код (Alpha-2) для EmojiFlag
+ *   city?: string|null;
+ * }} props.direction
  */
 function DestinationCard({ direction }) {
-  const { id, title, cover_url: coverUrl } = direction;
-  const [imgLoaded, setImgLoaded] = useState(false);
+  const {
+    id,
+    title,
+    cover_url: coverUrl,
+    user_id: authorId,
+    country,
+    city,
+  } = direction;
 
-  const imageSrc = coverUrl && /^https?:\/\//.test(coverUrl)
-    ? coverUrl
-    : 'https://cataas.com/cat/gif';
+  const { user } = useAuth();
+  const deleteMutation = useDeleteDirection();
+  const [isModalOpen, setModalOpen] = useState(false);
+  const canEdit = user?.id === authorId;
+  const { data: randomLocations = [] } = useLocationForCard(id);
+
+  const handleDelete = () => {
+    if (
+      window.confirm(
+        'Вы уверены? Это удалит направление и все связанные с ним локации. Действие необратимо.',
+      )
+    ) {
+      deleteMutation.mutate({ id, coverUrl });
+    }
+  };
+  /* fallback, если coverUrl пустой или не http/https */
+  const imageSrc =
+    coverUrl && /^https?:\/\//.test(coverUrl)
+      ? coverUrl
+      : 'https://cataas.com/cat/gif';
 
   return (
-    <motion.div
-      layout
-      whileHover={{ scale: 1.03 }}
-      className="group relative rounded-2xl bg-card text-card-foreground p-4 shadow transition-shadow"
-    >
-      <Link
-        href={`/destination/${id}`}
-        className="block no-underline hover:no-underline focus:no-underline"
+    <>
+      <motion.div
+        layout
+        whileHover={{ scale: 1.02 }}
+        className={cn(
+          'group relative overflow-hidden rounded-2xl bg-card text-card-foreground shadow transition-shadow md:flex',
+          'md:h-[25rem]' // фиксированная высота 25rem на десктопе
+        )}
       >
-        {/* Обложка */}
-        <div className="relative h-40 w-full overflow-hidden rounded-lg">
-          <Image
-            src={imageSrc}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className={cn(
-              'object-cover transition-opacity duration-500',
-              imgLoaded ? 'opacity-100' : 'opacity-0'
+        {/* ----- меню “три точки” для автора ----- */}
+        {canEdit && (
+          <div className="absolute right-2 top-2 z-10">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="Меню направления"
+                  className="rounded-full bg-muted p-2 backdrop-blur hover:bg-muted/90 focus:outline-none"
+                >
+                  <MoreVertical className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setModalOpen(true)}>
+                  Редактировать
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onSelect={handleDelete}
+                >
+                  Удалить
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+        {/* ссылка охватывает оба блока: контент + изображение */}
+        <Link
+          href={`/destination/${id}`}
+          className="flex flex-1 flex-col md:flex-row-reverse no-underline hover:no-underline focus:no-underline"
+        >
+          {/* изображение */}
+          <div className="relative h-44 w-full shrink-0 md:h-full md:w-2/3">
+            <Image
+              src={imageSrc}
+              alt={title}
+              fill
+              sizes="(max-width: 768px) 100vw, (min-width: 768px) 66vw"
+              className="object-cover transition-opacity duration-500"
+            />
+          </div>
+          {/* текстовый блок */}
+          <div className="flex w-full flex-col justify-between p-4 md:w-1/3">
+            <div className="space-y-1">
+              <h3 className="flex items-center gap-2 text-lg font-semibold leading-tight line-clamp-2">
+                <EmojiFlag
+                  countryCode={country}
+                  style={{ fontSize: '1.1rem' }}
+                />
+                {title}
+              </h3>
+              {city && (
+                <p className="text-sm text-muted-foreground line-clamp-1">
+                  {city}
+                </p>
+              )}
+            </div>
+            {randomLocations.length > 0 && (
+              <div className="sm:p-4 pt-4">
+                <div className="grid grid-cols-1 md:gap-y-6 gap-y-4">
+                  {randomLocations.map(loc => (
+                    <RandomLocation key={loc.id} location={loc} />
+                  ))}
+                </div>
+              </div>
             )}
-            onLoad={() => setImgLoaded(true)}
-            priority={false}
-          />
-          {!imgLoaded && (
-            <div className="absolute inset-0 animate-pulse bg-muted" />
-          )}
-        </div>
-        {/* Название */}
-        <h3 className="mt-4 text-lg font-semibold line-clamp-2">{title}</h3>
-      </Link>
-    </motion.div>
+            {/* счётчик локаций — выделен стилизацией */}
+            <div className="mt-4">
+              <span className="inline-flex items-center gap-x-1 bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-semibold">
+                <LocationCount directionId={id} />
+                <span>locations</span>
+              </span>
+            </div>
+          </div>
+        </Link>
+      </motion.div>
+      {/* модалка редактирования */}
+      {isModalOpen && (
+        <DestinationModal
+          isOpen={isModalOpen}
+          onClose={() => setModalOpen(false)}
+          initialData={direction}
+        />
+      )}
+    </>
   );
 }
 export default memo(DestinationCard);
+```
+
+---
+### AddDestinationButton
+
+* **Назначение:** Отображает количество локаций для заданного направления.
+* **Взаимодействие:** по клику открывает `DestinationModal`. Cкрыта для гостей.
+**Актаульный код AddDestinationButton.js:**
+```js
+'use client';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+/**
+ * @param {{ directionId: string }} props
+ */
+export default function LocationCount({ directionId }) {
+  const { data: count = 0, isLoading } = useQuery({
+    queryKey: ['locationCount', directionId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('locations')
+        .select('id', { count: 'exact', head: true })
+        .eq('direction_id', directionId);
+      if (error) throw error;
+      return count;
+    },
+    staleTime: 60_000,
+  });
+
+  return (
+    <p className="mt-1 text-sm text-muted-foreground">
+      {isLoading ? 'Загрузка…' : `${count} локаций`}
+    </p>
+  );
+}
 ```
 
 ---
@@ -838,25 +1009,103 @@ export default function SearchBar({
 ```
 
 ---
+### RandomLocation
+
+* **Назначение:** Mini card for a random location: small photo and title.
+**Актаульный код RandomLocation.js:**
+```js
+'use client';
+import Link from 'next/link';
+import Image from 'next/image';
+import { cn } from '@/lib/utils';
+/**
+ * @param {{ location: { id:string, title:string, image_url:string|null, direction_id:string } }} props
+ */
+export default function RandomLocation({ location }) {
+  const { id, title, image_url, direction_id } = location;
+  const imageSrc =
+    image_url && /^https?:\/\//.test(image_url)
+      ? image_url
+      : 'https://cataas.com/cat/gif';
+
+  return (
+    <Link
+      href={`/destination/${direction_id}/locations/${id}`}
+      className={cn(
+        'flex items-center gap-3 min-w-0 rounded-2xl',
+        'no-underline hover:underline focus:underline'
+      )}
+    >
+      <div className="relative h-12 w-16 md:h-14 md:w-20 flex-shrink-0 rounded-xl overflow-hidden mr-1 bg-muted">
+        <Image
+          src={imageSrc}
+          alt={title}
+          fill
+          sizes="64px"
+          className="object-cover"
+        />
+      </div>
+      <span className="flex-1 min-w-0 text font-medium text-card-foreground truncate">
+        {title}
+      </span>
+    </Link>
+  );
+}
+```
+
+---
+### LocationCount
+
+* **Назначение:** Отображает количество локаций для заданного направления.
+**Актаульный код LocationCount.js:**
+```js
+'use client';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+/**
+ * @param {{ directionId: string }} props
+ */
+export default function LocationCount({ directionId }) {
+  const { data: count = 0, isLoading } = useQuery({
+    queryKey: ['locationCount', directionId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('locations')
+        .select('id', { count: 'exact', head: true })
+        .eq('direction_id', directionId);
+      if (error) throw error;
+      return count;
+    },
+    staleTime: 60_000,
+  });
+  return (
+    <p className="inline-flex items-center bg-primary text-primary-foreground rounded-full text-sm font-semibold">
+      {isLoading ? 'Загрузка…' : `${count}`}
+    </p>
+  );
+}
+```
+
+---
 ### AddLocationButton
 
 * **Назначение:** Кнопка для перехода к форме создания новой локации.
-* **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
+* **Взаимодействие:** На главной странице располагается в удобном месте (например, в шапке или снизу). При нажатии переводит на маршрут `/destination/[dirId]/locations/new`. Использует Next.js `<Link>` или `useRouter().push`. Может быть всегда видимой при прокрутке страницы (fixed position).
 **Актаульный код AddLocationButton.js:**
 ```js
-"use client";
-import Link from "next/link";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
-/**
- * Плавающая кнопка «Добавить локацию».
- * • фиксирована в правом нижнем углу на всех брейкпоинтах;
- * • скрыта для неавторизованных посетителей.
- */
+'use client';
+import Link from 'next/link';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+
 export default function AddLocationButton({ className = "" }) {
   const { user } = useAuth();
-  if (!user) return null;
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
+  // Показываем кнопку только если есть авторизованный юзер и выбрано направление
+  if (!user || !activeDirectionId) return null;
 
   return (
     <Button
@@ -864,7 +1113,7 @@ export default function AddLocationButton({ className = "" }) {
       className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
-      <Link href="/locations/new">
+      <Link href={`/destination/${activeDirectionId}/locations/new`}>
         <Plus className="w-4 h-4" aria-hidden="true" />
         <span className="sr-only md:not-sr-only">Добавить локацию</span>
       </Link>
@@ -1448,6 +1697,7 @@ export default function LocationDetail({ location }) {
     source_url: sourceUrl,
     tags = [],
     user_id: authorId,
+    direction_id: dirId,
   } = location;
 
   const imageSrc =
@@ -1494,7 +1744,7 @@ export default function LocationDetail({ location }) {
           </div>
         )}
         <span className="inline-block rounded-md bg-muted mt-4 px-3 py-1 text-sm font-semibold text-foreground select-none">
-        Автор: {authorId}
+          Автор: {authorId}
         </span>
       </header>
       {/* 3. Описание */}
@@ -1544,9 +1794,12 @@ export default function LocationDetail({ location }) {
           )}
         </section>
       )}
-      {/*кнопка «Назад» */}
+      {/* Кнопка «Назад» */}
       <div className="flex items-center gap-4 pt-4">
-        <Button variant="secondary" onClick={() => router.push('/')}>
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`/destination/${dirId}`)}
+        >
           Назад
         </Button>
       </div>
@@ -1999,251 +2252,88 @@ export default function FormHeader({
 **Актаульный код LocationForm:**
 ```js
 'use client';
-import React, { useState, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import { useForm } from 'react-hook-form';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import ChooseTag from '@/components/ChooseTag';
-import AttachImage from '@/components/AttachImage';
-import FormHeader from '@/components/FormHeader';
-import FormNavigation from '@/components/FormNavigation';
-import { useAddLocation } from '@/hooks/useAddLocation';
-import { useUpdateLocation } from '@/hooks/useUpdateLocation';
-import toast from 'react-hot-toast';
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
+import { useOneLocation } from '@/hooks/useOneLocation';
+import { useDeleteLocation } from '@/hooks/useDeleteLocation';
+import LocationDetail from '@/components/LocationDetail';
+import LocationForm from '@/components/LocationForm';
+import SkeletonCard from '@/components/SkeletonCard';
+import { Button } from '@/components/ui/button';
 
-const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
-import successAnimation from '@/public/saveSuccess.json';
-
-export default function LocationForm({ initialData = {}, onSuccess }) {
+export default function LocationDetailPage() {
+  const { id } = useParams();
+  const { user, isLoading: authLoading } = useAuth();
+  const { data: location, isLoading, isError } = useOneLocation(id);
+  const [isEditing, setIsEditing] = useState(false);
   const router = useRouter();
-  const addLocation = useAddLocation();
-  const updateLocation = useUpdateLocation();
-  const isEditMode = Boolean(initialData.id);
-
-  const {
-    control,
-    register,
-    trigger,
-    handleSubmit,
-    formState: { errors },
-  } = useForm({
-    defaultValues: {
-      title: initialData.title || '',
-      description: initialData.description || '',
-      address: initialData.address || '',
-      cost: initialData.cost || '',
-      sourceUrl: initialData.sourceUrl || '',
-      tags: initialData.tags || [],
-      imageFile: null,
-    },
-  });
-
-  const totalSteps = 2;
-  const [step, setStep] = useState(1);
-  // Показываем Lottie сразу при submit
-  const [showSuccess, setShowSuccess] = useState(false);
-  const savedIdRef = useRef(null);
-
-  const onSubmit = (data) => {
-    const payload = {
-      title: data.title,
-      description: data.description,
-      address: data.address,
-      cost: data.cost,
-      sourceUrl: data.sourceUrl,
-      imageFile: data.imageFile,
-      imgUrl: initialData.imgUrl || null,
-      tags: data.tags,
-    };
-
-    if (isEditMode) {
-      updateLocation.mutate(
-        { id: initialData.id, data: payload },
-        {
-          onSuccess: () => {
-            savedIdRef.current = initialData.id;
-          },
-          onError: (err) => toast.error(err.message),
-        }
-      );
-    } else {
-      addLocation.mutate(payload, {
-        onSuccess: (loc) => {
-          savedIdRef.current = loc.id;
-        },
-        onError: (err) => toast.error(err.message),
-      });
-    }
-  };
-
-  const wrappedSubmit = handleSubmit(onSubmit);
-  const onFormSubmit = async (e) => {
-    e.preventDefault();
-
-    if (step < totalSteps) {
-      const fieldsToValidate = step === 1 ? ['title'] : [];
-      const valid = await trigger(fieldsToValidate);
-      if (valid) setStep((s) => s + 1);
-      return;
-    }
-    // Непосредственно сразу показываем Lottie
-    setShowSuccess(true);
-    wrappedSubmit();
-  };
-
-  const handleBack = () => {
-    if (step === 1) router.push('/');
-    else setStep((s) => s - 1);
-  };
-  // Экран Lottie-анимации
-  if (showSuccess) {
+  // хук удаления
+  const deleteMutation = useDeleteLocation();
+  // пока идёт загрузка данных или авторизации — показываем скелетон
+  if (isLoading || authLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24">
-        <Lottie
-          animationData={successAnimation}
-          loop={false}
-          autoplay
-          className="h-48 w-48"
-          onComplete={() => {
-            if (savedIdRef.current) {
-              router.push(`/locations/${savedIdRef.current}`);
-            } else {
-              router.push('/');
-            }
-            onSuccess?.();
-          }}
-        />
-        <p className="mt-6 text-lg font-semibold text-center">
-          Сохраняем…
-        </p>
-      </div>
+      <main className="container mx-auto px-4 py-6">
+        <SkeletonCard />
+      </main>
     );
   }
 
-  const titles = ['Основная информация', 'Дополнительные детали'];
-  const nextTitles = ['Подробности', null];
+  if (isError || !location) {
+    return (
+      <main className="container mx-auto px-4 py-6 text-destructive">
+        Не удалось загрузить локацию.
+      </main>
+    );
+  }
+  // только автор (location.user_id) может редактировать / удалять
+  const canEdit = user?.id === location.user_id;
+  // удаление с подтверждением
+  const handleDelete = () => {
+    if (!window.confirm('Удалить локацию безвозвратно?')) return;
+    deleteMutation.mutate(
+      { id, imageUrl: location.imgUrl },
+      {
+        onSuccess: () => {
+          router.push(`/destination/${location.direction_id}`);
+        },
+      },
+    );
+  };
 
   return (
-    <motion.form
-      onSubmit={onFormSubmit}
-      aria-label="Форма локации"
-      className="
-        w-full max-w-2xl mx-auto space-y-6
-        pb-32 md:pb-0
-      "
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-    >
-      <FormHeader
-        currentStep={step}
-        totalSteps={totalSteps}
-        title={titles[step - 1]}
-        nextTitle={nextTitles[step - 1]}
-      />
-
-      <AnimatePresence mode="wait" initial={false}>
-        {step === 1 && (
-          <motion.div
-            key="step1"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-6"
-          >
-            <div>
-              <label htmlFor="title" className="block text-sm font-medium">
-                Заголовок<span className="text-destructive">*</span>
-              </label>
-              <Input
-                id="title"
-                {...register('title', { required: 'Обязательное поле' })}
-                className="mt-1 w-full"
-              />
-              {errors.title && (
-                <p className="mt-1 text-sm text-destructive-foreground">
-                  {errors.title.message}
-                </p>
-              )}
+    <main className="container mx-auto px-4 py-6 space-y-6">
+      {/* 3. Рендерим либо просмотр, либо форму */}
+      {!isEditing ? (
+        <>
+          <LocationDetail location={location} />
+          {/* 1+2. Кнопки «Редактировать» и «Удалить» доступны только автору */}
+          {canEdit && (
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" onClick={() => setIsEditing(true)}>
+                Редактировать
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteMutation.isLoading}
+              >
+                {deleteMutation.isLoading ? 'Удаляем…' : 'Удалить'}
+              </Button>
             </div>
-
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium">
-                Описание
-              </label>
-              <Textarea
-                id="description"
-                {...register('description')}
-                className="mt-1 w-full"
-                rows={4}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium">Теги</label>
-              <ChooseTag control={control} name="tags" />
-            </div>
-          </motion.div>
-        )}
-
-        {step === 2 && (
-          <motion.div
-            key="step2"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-6"
-          >
-            <div>
-              <label htmlFor="address" className="block text-sm font-medium">
-                Адрес
-              </label>
-              <Input id="address" {...register('address')} className="mt-1 w-full" />
-            </div>
-
-            <div>
-              <label htmlFor="cost" className="block text-sm font-medium">
-                Стоимость
-              </label>
-              <Input id="cost" {...register('cost')} className="mt-1 w-full" />
-            </div>
-
-            <div>
-              <label htmlFor="sourceUrl" className="block text-sm font-medium">
-                Ссылка на источник
-              </label>
-              <Input
-                id="sourceUrl"
-                {...register('sourceUrl')}
-                className="mt-1 w-full break-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium">Изображение</label>
-              <AttachImage
-                control={control}
-                name="imageFile"
-                initialUrl={initialData.imgUrl}
-                className="mt-1"
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <FormNavigation
-        currentStep={step}
-        totalSteps={totalSteps}
-        onBack={handleBack}
-        isSubmitting={addLocation.isLoading || updateLocation.isLoading}
-      />
-    </motion.form>
+          )}
+        </>
+      ) : (
+        <>
+          <LocationForm
+            initialData={location}
+            onSuccess={() => {
+              setIsEditing(false);
+            }}
+          />
+        </>
+      )}
+    </main>
   );
 }
 ```
@@ -2419,18 +2509,17 @@ import deleteImage from '@/lib/deleteImage';
 /** Список направлений текущего пользователя */
 export function useDirections() {
   const { data: session, status } = useSession();
-  const userId = session?.user?.id;
 
   return useQuery({
     queryKey: qk.directions(),
-    enabled: status !== 'loading',
+    // Запускаем только когда точно знаем, что пользователь авторизован
+    enabled: status === 'authenticated',
     staleTime: 60_000,
     queryFn: async () => {
-      if (!userId) return [];
+      // Без фильтра по user_id — получаем все направления
       const { data, error } = await supabase
         .from('directions')
         .select('*')
-        .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -2592,30 +2681,30 @@ import { useSession } from 'next-auth/react';
 import { supabase } from '@/lib/supabaseClient';
 import toast from 'react-hot-toast';
 import uploadImage from '@/lib/uploadImage';
+import { useUIStore } from '@/store/uiStore';
 
-/**
- * Мутация для создания новой локации с загрузкой изображения в Storage.
- */
 export function useAddLocation() {
   const queryClient = useQueryClient();
   const { data: session } = useSession();
   const userId = session?.user?.id;
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
 
   return useMutation({
     mutationFn: async (formData) => {
       if (!userId) {
         throw new Error('Пользователь не авторизован');
       }
-      const { imageFile, tags, ...rest } = formData;
-
-      // 1. Нормализация тегов
-      let tagList = [];
-      if (Array.isArray(tags)) {
-        tagList = tags;
-      } else if (typeof tags === 'string' && tags.trim()) {
-        tagList = tags.split(',').map(t => t.trim()).filter(Boolean);
+      if (!activeDirectionId) {
+        throw new Error('Не выбран маршрут (direction_id)');
       }
 
+      const { imageFile, tags, ...rest } = formData;
+      // 1. Нормализация тегов
+      const tagList = Array.isArray(tags)
+        ? tags
+        : typeof tags === 'string' && tags.trim()
+        ? tags.split(',').map((t) => t.trim()).filter(Boolean)
+        : [];
       // 2. Загрузка изображения
       let image_url = null;
       if (imageFile) {
@@ -2626,8 +2715,7 @@ export function useAddLocation() {
           throw err;
         }
       }
-
-      // 3. Вызов RPC для создания локации вместе с тегами
+      // 3. Вызов обновлённого RPC с direction_id
       const { data, error } = await supabase.rpc(
         'create_location_with_tags',
         {
@@ -2639,6 +2727,7 @@ export function useAddLocation() {
           p_source_url:  rest.sourceUrl,
           p_image_url:   image_url,
           p_tags:        tagList,
+          p_direction_id: activeDirectionId,
         }
       );
       if (error) throw error;
@@ -2659,9 +2748,9 @@ export function useAddLocation() {
 ---
 ### useLocations.js
 
-* **Назначение:** Кастомный хук для получения и управления списком локаций.
+* **Назначение:** Кастомный хук для получения списком локаций.
 * **Функционал:** Оборачивает React Query (`useInfiniteQuery` или `useQuery`) для обращения к Supabase API (REST) или через клиентский SDK. Поддерживает параметры пагинации (limit, offset или курсор) и фильтрации (по `searchQuery` и выбранным тегам из Zustand). Возвращает `data` (массив локаций), `isLoading`, `isError`, `fetchNextPage`, `hasNextPage` и т. д. Поддерживает оптимистическое обновление при мутациях (добавление, обновление, удаление) через React Query.
-* **Использование:** Применяется на главной странице (`LocationListPage`) для загрузки списка; может использоваться и на странице детализации для получения одного элемента (например, через `useQuery(['location', id], ...)`). Также может содержать функции добавления/удаления тегов (`RPC` или патчи через Supabase) как методы `mutate`.
+* **Использование:** Применяется на `LocationListPage` для загрузки списка;
 **Актаульный код useLocations.js:** 
 ```js
 'use client';
@@ -2674,26 +2763,32 @@ const PAGE_SIZE = 9;
 export function useLocations() {
   const searchQuery = useUIStore((s) => s.searchQuery);
   const selectedTags = useUIStore((s) => s.selectedTags);
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
 
   const fetchLocations = async ({ pageParam = null }) => {
+    // Базовый запрос — выборка локаций с тегами
     let query = supabase
       .from('locations')
       .select('*, locations_tags(tag_id, tags(name))')
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
-    // Курсор: берём записи «старше» (меньше created_at)
+    // Фильтрация по активному направлению, если задано
+    if (activeDirectionId) {
+      query = query.eq('direction_id', activeDirectionId);
+    }
+    // Пагинация курсором
     if (pageParam) {
       query = query.lt('created_at', pageParam);
     }
-    // Поиск по заголовку (ilike, нечувствительно к регистру)
+    // Поиск по заголовку
     if (searchQuery) {
       query = query.ilike('title', `%${searchQuery}%`);
     }
-    // Фильтрация по выбранным тегам (JOIN locations_tags)
-   if (selectedTags.length) {
-      const {data: tagRows, error: tagError } = await supabase
+    // Фильтрация по выбранным тегам
+    if (selectedTags.length) {
+      const { data: tagRows, error: tagError } = await supabase
         .from('tags')
-        .select('id,name')
+        .select('id')
         .in('name', selectedTags);
       if (tagError) throw tagError;
       const tagIds = tagRows.map((t) => t.id);
@@ -2701,13 +2796,12 @@ export function useLocations() {
     }
 
     const { data, error } = await query;
-    console.log('got', data.length, 'items; last created_at =', data[data.length-1]?.created_at);
     if (error) throw error;
-
+    // Трансформация данных: приводим к виду с полями imgUrl и tags[]
     const items = data.map(({ locations_tags, ...loc }) => ({
-    ...loc,
-    imgUrl: loc.image_url,
-    tags: locations_tags.map((lt) => lt.tags.name),
+      ...loc,
+      imgUrl: loc.image_url,
+      tags: locations_tags.map((lt) => lt.tags.name),
     }));
 
     return {
@@ -2718,10 +2812,18 @@ export function useLocations() {
   };
 
   return useInfiniteQuery({
-    queryKey: ['locations', { search: searchQuery, tags: selectedTags }],
+    // Включаем activeDirectionId в ключ кэша
+    queryKey: [
+      'locations',
+      {
+        dir: activeDirectionId ?? '__root__',
+        search: searchQuery,
+        tags: selectedTags,
+      },
+    ],
     queryFn: fetchLocations,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 60_000,
+    staleTime: 60_000, // 1 минута
   });
 }
 ```
@@ -3180,6 +3282,42 @@ export default async function deleteImage(imageUrl) {
 ```
 
 ---
+### useLocationForCard
+
+* **Назначение:** Custom hook to fetch up to 10 locations for a given direction and return a random sample of 3.
+**Актаульный код useLocationForCard.js:**
+```js
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabaseClient';
+/**
+ * @param {string|null} directionId 
+ * @returns {{id:string, title:string, image_url:string|null, direction_id:string}[]}
+ */
+export function useLocationForCard(directionId) {
+  return useQuery({
+    queryKey: ['locationsForCard', directionId],
+    queryFn: async () => {
+      if (!directionId) return [];
+      const { data, error } = await supabase
+        .from('locations')
+        .select('id, title, image_url')
+        .eq('direction_id', directionId)
+        .limit(10);
+      if (error) throw error;
+      // Shuffle and pick 3
+      const shuffled = [...data].sort(() => 0.5 - Math.random());
+      return shuffled.slice(0, 3).map(item => ({
+        ...item,
+        direction_id: directionId,
+      }));
+    },
+    enabled: Boolean(directionId),
+    staleTime: 5 * 60_000, // 5 minutes
+  });
+}
+```
+
+---
 ### useTags
 
 * **Назначение:** Хук для получения и кеширования списка тегов.
@@ -3378,7 +3516,7 @@ export default function FavouriteFetcher() {
 ```
 
 ---
-### FavouriteFetcher
+### middleware.ts
 
 * **Назначение:** Пегулирование доступа к страницам на основе jwt
 **Актаульный код middleware.ts:**
@@ -3388,19 +3526,26 @@ import { getToken } from 'next-auth/jwt';
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  // 1) Разрешаем доступ к публичным маршрутам и статике
+  // ——— Legacy-редирект: все /locations/{rest} → /destination/__root__/locations/{rest}
+  const legacyMatch = pathname.match(/^\/locations\/(.*)$/);
+  if (legacyMatch) {
+    const redirectUrl = req.nextUrl.clone();
+    redirectUrl.pathname = `/destination/__root__/locations/${legacyMatch[1]}`;
+    return NextResponse.redirect(redirectUrl, 302);
+  }
+  // 1) Пропускаем публичные маршруты и статику
   if (
-    pathname.startsWith('/api/auth') ||  // NextAuth endpoints
-    pathname === '/' ||                  // главная страница (login modal)
+    pathname.startsWith('/api/auth') ||  // эндпоинты NextAuth
+    pathname === '/' ||                  // главная (login modal)
     pathname.startsWith('/_next') ||     // внутренние файлы Next.js
     pathname.startsWith('/static') ||    // статика
-    pathname.includes('.')                // файлы типа *.css, *.js, *.png и т.п.
+    pathname.includes('.')               // файлы типа *.css, *.js, *.png и т.п.
   ) {
     return NextResponse.next();
   }
   // 2) Проверяем наличие валидного JWT в HTTP-only cookie
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
-  // 3) Если токена нет — редирект на главную (modal login)
+  // 3) Если токена нет — редирект на главную (login modal)
   if (!token) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = '/';
@@ -3409,8 +3554,11 @@ export async function middleware(req: NextRequest) {
   // 4) Иначе — пропускаем дальше
   return NextResponse.next();
 }
-// Применять middleware только к приватным страницам `/locations/*`
+// Применяем middleware к legacy-маршрутам /locations/*
 export const config = {
-  matcher: ['/locations/new'],
+  matcher: [
+    '/locations/new',       // существующее правило (create)
+    '/locations/(.*)',      // новое правило для всех legacy-deep-links
+  ],
 };
 ```

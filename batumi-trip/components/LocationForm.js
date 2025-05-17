@@ -1,11 +1,10 @@
-// components/LocationForm.js
+// file: components/LocationForm.js
 'use client';
 import React, { useState, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useForm } from 'react-hook-form';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import ChooseTag from '@/components/ChooseTag';
@@ -21,6 +20,7 @@ import successAnimation from '@/public/saveSuccess.json';
 
 export default function LocationForm({ initialData = {}, onSuccess }) {
   const router = useRouter();
+  const { dirId } = useParams() || {};
   const addLocation = useAddLocation();
   const updateLocation = useUpdateLocation();
   const isEditMode = Boolean(initialData.id);
@@ -45,8 +45,6 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
 
   const totalSteps = 2;
   const [step, setStep] = useState(1);
-
-  // Показываем Lottie сразу при submit
   const [showSuccess, setShowSuccess] = useState(false);
   const savedIdRef = useRef(null);
 
@@ -83,27 +81,17 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
   };
 
   const wrappedSubmit = handleSubmit(onSubmit);
-  const onFormSubmit = async (e) => {
-    e.preventDefault();
-
-    if (step < totalSteps) {
-      const fieldsToValidate = step === 1 ? ['title'] : [];
-      const valid = await trigger(fieldsToValidate);
-      if (valid) setStep((s) => s + 1);
-      return;
-    }
-
-    // Непосредственно сразу показываем Lottie
-    setShowSuccess(true);
-    wrappedSubmit();
-  };
 
   const handleBack = () => {
-    if (step === 1) router.push('/');
-    else setStep((s) => s - 1);
+    if (step > 1) {
+      setStep((s) => s - 1);
+    } else {
+      // на первом шаге возвращаем в ветку
+      const target = dirId || initialData.direction_id;
+      router.push(`/destination/${target}`);
+    }
   };
 
-  // Экран Lottie-анимации
   if (showSuccess) {
     return (
       <div className="flex flex-col items-center justify-center py-24">
@@ -114,16 +102,16 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
           className="h-48 w-48"
           onComplete={() => {
             if (savedIdRef.current) {
-              router.push(`/locations/${savedIdRef.current}`);
+              const target = dirId || initialData.direction_id;
+              router.push(`/destination/${target}/locations/${savedIdRef.current}`);
             } else {
-              router.push('/');
+              const target = dirId || initialData.direction_id;
+              router.push(`/destination/${target}`);
             }
             onSuccess?.();
           }}
         />
-        <p className="mt-6 text-lg font-semibold text-center">
-          Сохраняем…
-        </p>
+        <p className="mt-6 text-lg font-semibold text-center">Сохраняем…</p>
       </div>
     );
   }
@@ -133,12 +121,20 @@ export default function LocationForm({ initialData = {}, onSuccess }) {
 
   return (
     <motion.form
-      onSubmit={onFormSubmit}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (step < totalSteps) {
+          const fieldsToValidate = step === 1 ? ['title'] : [];
+          trigger(fieldsToValidate).then((valid) => {
+            if (valid) setStep((s) => s + 1);
+          });
+        } else {
+          setShowSuccess(true);
+          wrappedSubmit();
+        }
+      }}
       aria-label="Форма локации"
-      className="
-        w-full max-w-2xl mx-auto space-y-6
-        pb-32 md:pb-0
-      "
+      className="w-full max-w-2xl mx-auto space-y-6 pb-32 md:pb-0"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}

@@ -1,4 +1,4 @@
-// hooks/useLocations.js
+// src/hooks/useLocations.js
 'use client';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
@@ -6,43 +6,40 @@ import { useUIStore } from '@/store/uiStore';
 
 const PAGE_SIZE = 9;
 
-/**
- * Кастомный хук загрузки списка локаций с учётом
- * поисковой строки и выбранных тегов из Zustand‑стора.
- * Реализован согласно StateManagement‑BatumiTrip.md § 5 (useLocations)
- * и ComponentsDesign‑BatumiTrip.md (описание useLocations).
- */
 export function useLocations() {
+  // Глобальные фильтры из Zustand
   const searchQuery = useUIStore((s) => s.searchQuery);
   const selectedTags = useUIStore((s) => s.selectedTags);
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
 
   const fetchLocations = async ({ pageParam = null }) => {
-    /**
-     * Формируем запрос к Supabase REST через JS SDK.
-     * Для cursor‑pagination используем поле created_at.
-     */
+    // Базовый запрос — выборка локаций с тегами
     let query = supabase
       .from('locations')
       .select('*, locations_tags(tag_id, tags(name))')
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
-    
 
-    // Курсор: берём записи «старше» (меньше created_at)
+    // Фильтрация по активному направлению, если задано
+    if (activeDirectionId) {
+      query = query.eq('direction_id', activeDirectionId);
+    }
+
+    // Пагинация курсором
     if (pageParam) {
       query = query.lt('created_at', pageParam);
     }
 
-    // Поиск по заголовку (ilike, нечувствительно к регистру)
+    // Поиск по заголовку
     if (searchQuery) {
       query = query.ilike('title', `%${searchQuery}%`);
     }
 
-    // Фильтрация по выбранным тегам (JOIN locations_tags)
-   if (selectedTags.length) {
-      const {data: tagRows, error: tagError } = await supabase
+    // Фильтрация по выбранным тегам
+    if (selectedTags.length) {
+      const { data: tagRows, error: tagError } = await supabase
         .from('tags')
-        .select('id,name')
+        .select('id')
         .in('name', selectedTags);
       if (tagError) throw tagError;
       const tagIds = tagRows.map((t) => t.id);
@@ -50,14 +47,13 @@ export function useLocations() {
     }
 
     const { data, error } = await query;
-    console.log('got', data.length, 'items; last created_at =', data[data.length-1]?.created_at);
     if (error) throw error;
 
-    // Преобразуем сырой ответ, вынося из relations только массив имён тегов
+    // Трансформация данных: приводим к виду с полями imgUrl и tags[]
     const items = data.map(({ locations_tags, ...loc }) => ({
-    ...loc,
-    imgUrl: loc.image_url,
-    tags: locations_tags.map((lt) => lt.tags.name),
+      ...loc,
+      imgUrl: loc.image_url,
+      tags: locations_tags.map((lt) => lt.tags.name),
     }));
 
     return {
@@ -68,9 +64,17 @@ export function useLocations() {
   };
 
   return useInfiniteQuery({
-    queryKey: ['locations', { search: searchQuery, tags: selectedTags }],
+    // Включаем activeDirectionId в ключ кэша
+    queryKey: [
+      'locations',
+      {
+        dir: activeDirectionId ?? '__root__',
+        search: searchQuery,
+        tags: selectedTags,
+      },
+    ],
     queryFn: fetchLocations,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
-    staleTime: 60_000,
+    staleTime: 60_000, // 1 минута
   });
 }

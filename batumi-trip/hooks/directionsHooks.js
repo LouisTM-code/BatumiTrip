@@ -8,18 +8,17 @@ import deleteImage from '@/lib/deleteImage';
 /** Список направлений текущего пользователя */
 export function useDirections() {
   const { data: session, status } = useSession();
-  const userId = session?.user?.id;
 
   return useQuery({
     queryKey: qk.directions(),
-    enabled: status !== 'loading',
+    // Запускаем только когда точно знаем, что пользователь авторизован
+    enabled: status === 'authenticated',
     staleTime: 60_000,
     queryFn: async () => {
-      if (!userId) return [];
+      // Без фильтра по user_id — получаем все направления
       const { data, error } = await supabase
         .from('directions')
         .select('*')
-        .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;

@@ -1,16 +1,20 @@
-"use client";
-import Link from "next/link";
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
+'use client';
+import Link from 'next/link';
+import { Plus } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/hooks/useAuth';
+import { useUIStore } from '@/store/uiStore';
+
 /**
- * Плавающая кнопка «Добавить локацию».
- * • фиксирована в правом нижнем углу на всех брейкпоинтах;
- * • скрыта для неавторизованных посетителей.
+ * Плавающая кнопка «Добавить локацию» внутри ветки.
+ * Ссылается на маршрут /destination/[dirId]/locations/new
  */
 export default function AddLocationButton({ className = "" }) {
   const { user } = useAuth();
-  if (!user) return null;
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
+
+  // Показываем кнопку только если есть авторизованный юзер и выбрано направление
+  if (!user || !activeDirectionId) return null;
 
   return (
     <Button
@@ -18,7 +22,7 @@ export default function AddLocationButton({ className = "" }) {
       className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
-      <Link href="/locations/new">
+      <Link href={`/destination/${activeDirectionId}/locations/new`}>
         <Plus className="w-4 h-4" aria-hidden="true" />
         <span className="sr-only md:not-sr-only">Добавить локацию</span>
       </Link>
