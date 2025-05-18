@@ -142,7 +142,7 @@ function DestinationCard({ direction }) {
               <div className="sm:p-4 pt-4 flex justify-center">
                 <Button
                   asChild
-                  className="w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold bg-primary text-primary-foreground"
+                  className="w-full hover:no-underline focus:no-underline sm:w-auto flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold bg-primary text-primary-foreground"
                 >
                   <Link href={`/destination/${id}/locations/new`}>
                     <Plus className="w-4 h-4" aria-hidden="true" />

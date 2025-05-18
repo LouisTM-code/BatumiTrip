@@ -568,7 +568,7 @@ function DestinationCard({ direction }) {
               <div className="sm:p-4 pt-4 flex justify-center">
                 <Button
                   asChild
-                  className="w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold bg-primary text-primary-foreground"
+                  className="w-full hover:no-underline focus:no-underline sm:w-auto flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold bg-primary text-primary-foreground"
                 >
                   <Link href={`/destination/${id}/locations/new`}>
                     <Plus className="w-4 h-4" aria-hidden="true" />
@@ -599,42 +599,6 @@ function DestinationCard({ direction }) {
   );
 }
 export default memo(DestinationCard);
-```
-
----
-### AddDestinationButton
-
-* **Назначение:** Отображает количество локаций для заданного направления.
-* **Взаимодействие:** по клику открывает `DestinationModal`. Cкрыта для гостей.
-**Актаульный код AddDestinationButton.js:**
-```js
-'use client';
-import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabaseClient';
-/**
- * @param {{ directionId: string }} props
- */
-export default function LocationCount({ directionId }) {
-  const { data: count = 0, isLoading } = useQuery({
-    queryKey: ['locationCount', directionId],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from('locations')
-        .select('id', { count: 'exact', head: true })
-        .eq('direction_id', directionId);
-      if (error) throw error;
-      return count;
-    },
-    staleTime: 60_000,
-  });
-
-  return (
-    <p className="mt-1 text-sm text-muted-foreground">
-      {isLoading ? 'Загрузка…' : `${count} локаций`}
-    </p>
-  );
-}
 ```
 
 ---
@@ -1134,7 +1098,7 @@ export default function AddLocationButton({ className = "" }) {
   return (
     <Button
       asChild
-      className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
+      className={`fixed hover:no-underline focus:no-underline bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
       <Link href={`/destination/${activeDirectionId}/locations/new`}>
@@ -1331,7 +1295,7 @@ export default function LocationList() {
           ? "Загрузка..."
           : hasNextPage
           ? "Прокрутите вниз для загрузки новых"
-          : "Больше нет локаций"}
+          : "Нет локаций. Добавьте свою 😉"}
       </div>
     </>
   );

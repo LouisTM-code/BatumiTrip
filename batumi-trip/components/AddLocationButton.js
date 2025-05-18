@@ -4,7 +4,6 @@ import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import { useUIStore } from '@/store/uiStore';
-
 /**
  * Плавающая кнопка «Добавить локацию» внутри ветки.
  * Ссылается на маршрут /destination/[dirId]/locations/new
@@ -19,7 +18,7 @@ export default function AddLocationButton({ className = "" }) {
   return (
     <Button
       asChild
-      className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
+      className={`fixed hover:no-underline focus:no-underline bottom-4 right-4 z-50 flex items-center gap-2 ${className}`}
       aria-label="Добавить локацию"
     >
       <Link href={`/destination/${activeDirectionId}/locations/new`}>
