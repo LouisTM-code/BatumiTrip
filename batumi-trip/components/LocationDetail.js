@@ -1,3 +1,4 @@
+// file: components/LocationDetail.js
 'use client';
 import { useState } from 'react';
 import Image from 'next/image';
@@ -7,15 +8,6 @@ import { Button } from '@/components/ui/button';
 import TagBadge from '@/components/TagBadge';
 import { cn } from '@/lib/utils';
 
-/**
- * LocationDetail – детализированное отображение локации.
- * 5 секций, разделённых цветом:
- * 1) Изображение;
- * 2) Заголовок;
- * 3) Теги;
- * 4) Описание;
- * 5) Дополнительная информация.
- */
 export default function LocationDetail({ location }) {
   const router = useRouter();
   const {
@@ -27,6 +19,7 @@ export default function LocationDetail({ location }) {
     source_url: sourceUrl,
     tags = [],
     user_id: authorId,
+    direction_id: dirId,
   } = location;
 
   const imageSrc =
@@ -57,7 +50,7 @@ export default function LocationDetail({ location }) {
             'object-cover transition-opacity duration-500',
             imgLoaded ? 'opacity-100' : 'opacity-0'
           )}
-          onLoadingComplete={() => setImgLoaded(true)}
+          onLoad={() => setImgLoaded(true)}
         />
       </div>
 
@@ -74,10 +67,9 @@ export default function LocationDetail({ location }) {
           </div>
         )}
         <span className="inline-block rounded-md bg-muted mt-4 px-3 py-1 text-sm font-semibold text-foreground select-none">
-        Автор: {authorId}
+          Автор: {authorId}
         </span>
       </header>
-
 
       {/* 3. Описание */}
       {description && (
@@ -128,9 +120,12 @@ export default function LocationDetail({ location }) {
         </section>
       )}
 
-      {/*кнопка «Назад» */}
+      {/* Кнопка «Назад» */}
       <div className="flex items-center gap-4 pt-4">
-        <Button variant="secondary" onClick={() => router.push('/')}>
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`/destination/${dirId}`)}
+        >
           Назад
         </Button>
       </div>

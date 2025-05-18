@@ -21,18 +21,17 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 
-// Lottie ‑ динамический импорт на клиенте
 const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
   const [isSearchOpen, setSearchOpen] = useState(false);
   const lottieRef = useRef(null);
 
   const handleLoginClick = () => setLoginModal(true);
   const toggleSearch = () => setSearchOpen((o) => !o);
-
   /** Запускаем один цикл анимации при нажатии */
   const playAnimation = () => {
     if (lottieRef.current) {
@@ -51,7 +50,7 @@ export default function Header({ className }) {
           "sticky top-0 z-30 flex w-full items-center justify-between px-4 py-3",
           "bg-primary/90 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/80",
           "shadow-md text-primary-foreground",
-          className,
+          className
         )}
       >
         {/* Логотип */}
@@ -65,17 +64,18 @@ export default function Header({ className }) {
           />
           <span className="sr-only">Batumi Trip</span>
         </Link>
+        {/* Иконка поиска (только на странице направления) */}
+        {activeDirectionId && (
+          <button
+            onClick={toggleSearch}
+            aria-label="Поиск"
+            className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          >
+            <Search className="h-6 w-6" aria-hidden="true" />
+          </button>
+        )}
 
-        {/* Иконка поиска */}
-        <button
-          onClick={toggleSearch}
-          aria-label="Поиск"
-          className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-        >
-          <Search className="h-6 w-6" aria-hidden="true" />
-        </button>
-
-        {/* ---------- Auth‑блок ---------- */}
+        {/* ---------- Auth-блок ---------- */}
         {user ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -123,10 +123,9 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
-
-      {/* ---------- Поисковая строка ---------- */}
+      {/* ---------- Поисковая строка (только на странице направления) ---------- */}
       <AnimatePresence>
-        {isSearchOpen && (
+        {activeDirectionId && isSearchOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -139,7 +138,6 @@ export default function Header({ className }) {
           </motion.div>
         )}
       </AnimatePresence>
-
       {/* ---------- Модалка логина ---------- */}
       <LoginModal />
     </>

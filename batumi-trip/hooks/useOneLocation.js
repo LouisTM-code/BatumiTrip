@@ -26,7 +26,7 @@ export function useOneLocation(id) {
 
       return {
         ...data,
-        imgUrl: data.image_url,            // camelCase на фронте :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+        imgUrl: data.image_url,            // camelCase на фронт
         tags: data.locations_tags.map((lt) => lt.tags.name),
         isFavourite: data.favourites?.length > 0,
       };
