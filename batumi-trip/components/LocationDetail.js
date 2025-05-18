@@ -50,7 +50,7 @@ export default function LocationDetail({ location }) {
             'object-cover transition-opacity duration-500',
             imgLoaded ? 'opacity-100' : 'opacity-0'
           )}
-          onLoadingComplete={() => setImgLoaded(true)}
+          onLoad={() => setImgLoaded(true)}
         />
       </div>
 

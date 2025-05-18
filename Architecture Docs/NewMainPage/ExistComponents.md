@@ -301,9 +301,9 @@ const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 export default function Header({ className }) {
   const { user, signOut } = useAuth();
   const setLoginModal = useUIStore((s) => s.setLoginModal);
+  const activeDirectionId = useUIStore((s) => s.activeDirectionId);
   const [isSearchOpen, setSearchOpen] = useState(false);
   const lottieRef = useRef(null);
-
   const handleLoginClick = () => setLoginModal(true);
   const toggleSearch = () => setSearchOpen((o) => !o);
   /** Запускаем один цикл анимации при нажатии */
@@ -324,7 +324,7 @@ export default function Header({ className }) {
           "sticky top-0 z-30 flex w-full items-center justify-between px-4 py-3",
           "bg-primary/90 backdrop-blur-md supports-[backdrop-filter]:bg-foreground/80",
           "shadow-md text-primary-foreground",
-          className,
+          className
         )}
       >
         {/* Логотип */}
@@ -338,15 +338,18 @@ export default function Header({ className }) {
           />
           <span className="sr-only">Batumi Trip</span>
         </Link>
-        {/* Иконка поиска */}
-        <button
-          onClick={toggleSearch}
-          aria-label="Поиск"
-          className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-        >
-          <Search className="h-6 w-6" aria-hidden="true" />
-        </button>
-        {/* ---------- Auth‑блок ---------- */}
+        {/* Иконка поиска (только на странице направления) */}
+        {activeDirectionId && (
+          <button
+            onClick={toggleSearch}
+            aria-label="Поиск"
+            className="p-2 rounded focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          >
+            <Search className="h-6 w-6" aria-hidden="true" />
+          </button>
+        )}
+
+        {/* ---------- Auth-блок ---------- */}
         {user ? (
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
@@ -394,9 +397,9 @@ export default function Header({ className }) {
           </Button>
         )}
       </motion.header>
-      {/* ---------- Поисковая строка ---------- */}
+      {/* ---------- Поисковая строка (только на странице направления) ---------- */}
       <AnimatePresence>
-        {isSearchOpen && (
+        {activeDirectionId && isSearchOpen && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
@@ -440,10 +443,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { MoreVertical } from 'lucide-react';
-import EmojiFlag from 'react-emoji-flag';
+import { MoreVertical, Plus } from 'lucide-react';
 import { useLocationForCard } from '@/hooks/useLocationForCard';
 import RandomLocation from '@/components/RandomLocation';
+import Flag from 'react-world-flags';
+import { Button } from '@/components/ui/button';
 /**
  * @param {{
  *   id: string;
@@ -536,24 +540,23 @@ function DestinationCard({ direction }) {
               sizes="(max-width: 768px) 100vw, (min-width: 768px) 66vw"
               className="object-cover transition-opacity duration-500"
             />
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition duration-300 pointer-events-none bg-[radial-gradient(ellipse_at_center,_transparent_30%,_rgba(0,0,0,0.4)_100%)]" />
           </div>
           {/* текстовый блок */}
           <div className="flex w-full flex-col justify-between p-4 md:w-1/3">
             <div className="space-y-1">
-              <h3 className="flex items-center gap-2 text-lg font-semibold leading-tight line-clamp-2">
-                <EmojiFlag
-                  countryCode={country}
-                  style={{ fontSize: '1.1rem' }}
-                />
+              <h3 className="flex items-center gap-2 text-2xl font-semibold leading-tight line-clamp-2">
+                <Flag code={country.toUpperCase()} height="32" width="32" />
                 {title}
               </h3>
               {city && (
-                <p className="text-sm text-muted-foreground line-clamp-1">
+                <p className="text text-muted-foreground line-clamp-1">
                   {city}
                 </p>
               )}
             </div>
-            {randomLocations.length > 0 && (
+            {/* Random locations or Add button */}
+            {randomLocations.length > 0 ? (
               <div className="sm:p-4 pt-4">
                 <div className="grid grid-cols-1 md:gap-y-6 gap-y-4">
                   {randomLocations.map(loc => (
@@ -561,12 +564,24 @@ function DestinationCard({ direction }) {
                   ))}
                 </div>
               </div>
+            ) : (
+              <div className="sm:p-4 pt-4 flex justify-center">
+                <Button
+                  asChild
+                  className="w-full sm:w-auto flex items-center gap-2 px-3 py-1 rounded-full text-sm font-semibold bg-primary text-primary-foreground"
+                >
+                  <Link href={`/destination/${id}/locations/new`}>
+                    <Plus className="w-4 h-4" aria-hidden="true" />
+                    <span>Добавить локацию</span>
+                  </Link>
+                </Button>
+              </div>
             )}
             {/* счётчик локаций — выделен стилизацией */}
-            <div className="mt-4">
-              <span className="inline-flex items-center gap-x-1 bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-semibold">
+            <div className="mt-4 md:mt-0 transform hover:scale-[1.08] transition duration-200">
+              <span className="flex justify-center items-center gap-x-1 bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-semibold">
                 <LocationCount directionId={id} />
-                <span>locations</span>
+                <span> locations</span>
               </span>
             </div>
           </div>
@@ -1015,28 +1030,37 @@ export default function SearchBar({
 **Актаульный код RandomLocation.js:**
 ```js
 'use client';
-import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 /**
- * @param {{ location: { id:string, title:string, image_url:string|null, direction_id:string } }} props
+ * @param {{ location: { id: string, title: string, image_url: string|null, direction_id: string } }} props
  */
 export default function RandomLocation({ location }) {
+  const router = useRouter();
   const { id, title, image_url, direction_id } = location;
   const imageSrc =
     image_url && /^https?:\/\//.test(image_url)
       ? image_url
       : 'https://cataas.com/cat/gif';
 
+  const handleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/destination/${direction_id}/locations/${id}`);
+  };
+
   return (
-    <Link
-      href={`/destination/${direction_id}/locations/${id}`}
+    <button
+      type="button"
+      onClick={handleClick}
       className={cn(
         'flex items-center gap-3 min-w-0 rounded-2xl',
-        'no-underline hover:underline focus:underline'
+        'hover:underline focus:underline focus:outline-none',
+        'transform hover:scale-[1.05] transition duration-200'
       )}
     >
-      <div className="relative h-12 w-16 md:h-14 md:w-20 flex-shrink-0 rounded-xl overflow-hidden mr-1 bg-muted">
+      <div className="relative h-12 w-16 md:h-14 md:w-20 flex-shrink-0 rounded-xl overflow-hidden bg-muted">
         <Image
           src={imageSrc}
           alt={title}
@@ -1045,10 +1069,10 @@ export default function RandomLocation({ location }) {
           className="object-cover"
         />
       </div>
-      <span className="flex-1 min-w-0 text font-medium text-card-foreground truncate">
+      <span className="flex-1 text-left min-w-0 font-medium text-card-foreground truncate">
         {title}
       </span>
-    </Link>
+    </button>
   );
 }
 ```
@@ -1728,7 +1752,7 @@ export default function LocationDetail({ location }) {
             'object-cover transition-opacity duration-500',
             imgLoaded ? 'opacity-100' : 'opacity-0'
           )}
-          onLoadingComplete={() => setImgLoaded(true)}
+          onLoad={() => setImgLoaded(true)}
         />
       </div>
       {/* 2. Автор + теги + Заголовок */}
